@@ -43,6 +43,13 @@ class Source:
     def check_access_rights(self, mode):
         if self.denied:
             raise legacy.AccessError('restricted')
+    def with_context(self, **context):
+        return self
+    def search(self, domain):
+        self.check_access_rights('read')
+        rows = [row for row in self.rows if matches(domain, row)]
+        return types.SimpleNamespace(read=lambda fields: [
+            {key: row.get(key, False) for key in ['id'] + fields} for row in rows])
     def search_count(self, domain):
         self.check_access_rights('read')
         return sum(matches(domain, row) for row in self.rows)
@@ -119,7 +126,9 @@ def fixture_service():
     s.env['sale.order.line'] = Source(rows)
     s.env['sale.order'] = Source([dict(id=r['id'], company_id=1, state=r['state'], hmx_customer_id=r['hmx_customer_id'],
         amount_untaxed=r['price_subtotal'], date_order=r['hmx_date']) for r in rows])
-    s.env['res.currency'] = types.SimpleNamespace(browse=lambda cid: types.SimpleNamespace(name='MXN', decimal_places=2))
+    s.env['res.currency'] = types.SimpleNamespace(browse=lambda cid: types.SimpleNamespace(name={1: 'MXN', 2: 'USD', 3: 'EUR'}[cid], decimal_places=2))
+    s.env['res.partner'] = Source([dict(id=i, company_registry=f'CLI-{i:03d}', name=f'Cliente {i}') for i in (1, 2, 3)])
+    s.env['product.product'] = Source([dict(id=1, default_code='PROD-001', display_name='[PROD-001] Producto 1')])
     s.env['stock.move'] = Source([dict(id=1, company_id=1, state='done', production_id=42,
         byproduct_id=False, scrapped=False, **{'location_id.usage': 'production', 'location_dest_id.usage': 'internal'},
         hmx_production_warehouse_id=(2, 'Almacén 2'), product_id=(1, 'Producto 1'), hmx_family_id=(1, 'Panel de cartón'),
@@ -269,6 +278,53 @@ class TestExecutive(unittest.TestCase):
         self.assertEqual(payload['reconciliation']['difference'], 0)
         self.assertEqual(payload['cards'][0]['current'], 350)
 
+    def test_mixed_currencies_are_separate_and_production_is_not_duplicated(self):
+        data = self.service.get_dashboard('resumen', dict(FILTERS, currency_id=0))
+        self.assertTrue(data['mixed'])
+        self.assertNotIn('cards', data)
+        self.assertEqual({b['currency']: b['cards'][0]['current'] for b in data['currency_blocks']},
+                         {'MXN': 350, 'USD': 800})
+        self.assertTrue(all(b['production'] is None for b in data['currency_blocks']))
+        self.assertEqual(data['production']['rows'][0]['current'], 15)
+        for block in data['currency_blocks']:
+            self.assertEqual(block['reconciliation']['difference'], 0)
+            self.assertIn(('currency_id', '=', block['currency_id']), block['cards'][0]['action']['domain'])
+
+    def test_mixed_includes_invoice_and_payment_only_currencies(self):
+        self.service.env['account.move.line'] = Source([dict(id=5, company_id=1, currency_id=3,
+            parent_state='posted', display_type='product', amount_currency=-45, hmx_warehouse_id=False,
+            **{'move_id.move_type': 'out_invoice', 'move_id.invoice_date': '2026-08-03'})])
+        data = self.service.get_dashboard('comercial', dict(FILTERS, currency_id=0))
+        euro = next(b for b in data['currency_blocks'] if b['currency'] == 'EUR')
+        self.assertEqual(euro['cards'][0]['current'], 0)
+        self.assertEqual(euro['cards'][1]['previous'], 45)
+        self.service.env['account.move.line'] = Source([])
+        self.service.env['account.payment'] = Source([dict(id=1, company_id=1, currency_id=3,
+            state='paid', partner_type='customer', payment_type='inbound', date='2026-09-03',
+            amount=60, paired_internal_transfer_payment_id=False, **{'move_id.state': 'posted',
+            'destination_account_id.account_type': 'asset_receivable'})])
+        data = self.service.get_dashboard('comercial', dict(FILTERS, currency_id=0))
+        euro = next(b for b in data['currency_blocks'] if b['currency'] == 'EUR')
+        self.assertEqual(euro['cards'][2]['current'], 60)
+
+    def test_currency_filters_orders_but_not_physical_inventory_or_attendance(self):
+        single = self.service._catalog(FILTERS)
+        mixed = self.service._catalog(dict(FILTERS, currency_id=0))
+        for key in ['purchase_orders', 'delivery_pending']:
+            self.assertIn(('currency_id', '=', 1), single[key]['domain'])
+            self.assertNotIn(('currency_id', '=', 0), mixed[key]['domain'])
+            self.assertNotIn(('currency_id', '=', 1), mixed[key]['domain'])
+        for key in ['inventory_positions', 'attendance_records']:
+            self.assertEqual(single[key]['domain'], mixed[key]['domain'])
+
+    def test_actual_scope_accepts_mixed_without_replacing_it_with_company_currency(self):
+        self.service.with_context = lambda **context: self.service
+        self.service.env['res.currency'] = Source([dict(id=1), dict(id=2)])
+        _, filters = executive.ExecutiveAnalytics._scope(self.service, dict(FILTERS, currency_id=0))
+        self.assertEqual(filters['currency_id'], 0)
+        with self.assertRaises(legacy.ValidationError):
+            executive.ExecutiveAnalytics._scope(self.service, dict(FILTERS, currency_id=-1))
+
 
 def export(path):
     service = fixture_service()
@@ -276,7 +332,12 @@ def export(path):
         tabs=[dict(key=k, label=v) for k, v in executive.EXEC_TABS], warehouses=[dict(id=1, name='Almacén 1'), dict(id=2, name='Almacén 2')],
         currencies=[dict(id=1, name='MXN'), dict(id=2, name='USD')], customers=[dict(id=i, name=f'Cliente {i}') for i in [1,2,3]],
         products=[dict(id=1, name='Producto 1')], familys=[dict(id=1, name='Panel de cartón')], sellers=[dict(id=1, name='Vendedor')])
+    from operational_fixtures import fixtures as operational_fixtures
+    operational = operational_fixtures()
+    options['tabs'] += [dict(key=k, label=label) for k, label in legacy.analytics.TABS if k in operational]
     payload = dict(options=options, dashboards={tab: service.get_dashboard(tab, FILTERS) for tab, _ in executive.EXEC_TABS})
+    payload['dashboards'].update(operational)
+    payload['mixed'] = {tab: service.get_dashboard(tab, dict(FILTERS, currency_id=0)) for tab, _ in executive.EXEC_TABS}
     Path(path).write_text(json.dumps(payload, ensure_ascii=False))
 
 

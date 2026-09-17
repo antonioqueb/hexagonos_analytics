@@ -5,7 +5,7 @@ import { useService } from '@web/core/utils/hooks';
 import { Dialog } from '@web/core/dialog/dialog';
 import { Component, onWillStart, onWillUnmount, useState } from '@odoo/owl';
 import { user } from '@web/core/user';
-import { AnalyticsChart, commercialCharts, productionCharts } from './charts';
+import { AnalyticsChart, commercialCharts, productionCharts, operationalCharts, entityChartLabel, entityFullLabel } from './charts';
 
 const MODEL = 'hexagonos.analytics';
 const numberFormat = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 6 });
@@ -135,6 +135,10 @@ export class HexagonosAnalytics extends Component {
         this.changeDate(field, { target: { value: field === 'comparison' ? raw : Number(raw) } });
         this.state.customerPage = 0;
     }
+    changeCurrency(event) {
+        this.changeFilter('currency_id', event);
+        this.load();
+    }
     toggleWarehouse(id, checked) {
         const ids = this.state.filters.warehouse_ids.filter(value => value !== id);
         if (checked) ids.push(id);
@@ -162,22 +166,32 @@ export class HexagonosAnalytics extends Component {
         return labels.length ? labels : ['Todos los almacenes · incluye Sin asignar'];
     }
     get charts() { return this.state.data?.executive ? commercialCharts(this.state.data, this.state.tab) : []; }
+    chartsFor(data) { return commercialCharts(data, this.state.tab); }
+    productionChartsFor(data) { return productionCharts(data); }
+    get operationalCharts() { return this.state.data && !this.state.data.executive ? operationalCharts(this.state.data) : []; }
     get productionCharts() { return this.state.data?.executive ? productionCharts(this.state.data) : []; }
-    get customers() {
-        return (this.state.data?.customers?.rows || []).filter(row => (!this.state.customerStatus || row.status === this.state.customerStatus) &&
+    customersFor(data) {
+        return (data?.customers?.rows || []).filter(row => (!this.state.customerStatus || row.status === this.state.customerStatus) &&
             row.label.toLocaleLowerCase('es').includes(this.state.customerSearch.toLocaleLowerCase('es')));
     }
-    get customerRows() { return this.customers.slice(this.state.customerPage * 25, (this.state.customerPage + 1) * 25); }
-    get heatRows() { return [...(this.state.data?.customers?.rows || [])].filter(r => r.months.length).sort((a, b) => b.current - a.current).slice(0, 15); }
-    heatClass(value) {
-        const values = this.heatRows.flatMap(r => r.months.map(m => Math.abs(m.value)));
+    get customers() { return this.customersFor(this.state.data); }
+    customerRowsFor(data) { return this.customersFor(data).slice(this.state.customerPage * 25, (this.state.customerPage + 1) * 25); }
+    get customerRows() { return this.customerRowsFor(this.state.data); }
+    heatRowsFor(data) { return [...(data?.customers?.rows || [])].filter(r => r.months.length).sort((a, b) => b.current - a.current).slice(0, 15); }
+    heatLabel(row) {
+        const label = entityChartLabel(row, 'customer');
+        return Array.isArray(label) ? label.join(' · ') : label;
+    }
+    heatFullLabel(row) { return entityFullLabel(row, 'customer'); }
+    heatClass(value, data = this.state.data) {
+        const values = this.heatRowsFor(data).flatMap(r => r.months.map(m => Math.abs(m.value)));
         const max = Math.max(1, ...values);
         return value === 0 ? 'heat_0' : value < 0 ? 'heat_negative' : value / max > .5 ? 'heat_3' : value / max > .15 ? 'heat_2' : 'heat_1';
     }
     changeCustomerList(field, value) { this.state[field] = value; this.state.customerPage = 0; }
-    money(value) {
+    money(value, data = this.state.data) {
         if (value === null || value === undefined) return '—';
-        return `${new Intl.NumberFormat('es-MX', { maximumFractionDigits: this.state.data.currency_digits ?? 2 }).format(value)} ${this.state.data.currency}`;
+        return `${new Intl.NumberFormat('es-MX', { maximumFractionDigits: data.currency_digits ?? 2 }).format(value)} ${data.currency}`;
     }
     signed(value, digits = this.state.data?.currency_digits ?? 2) {
         return `${value > 0 ? '+' : ''}${new Intl.NumberFormat('es-MX', { maximumFractionDigits: digits }).format(value)}`;
@@ -186,7 +200,6 @@ export class HexagonosAnalytics extends Component {
 
     number(value) { return value === null ? 'Sin base' : numberFormat.format(value); }
     scopeLabel(scope) { return scope === 'periodo' ? 'Período seleccionado' : 'Situación actual'; }
-    barWidth(row, panel) { return `${Math.min(100, Math.abs(row.value) / panel.max * 100)}%`; }
 
     async openAction(action) {
         if (!action) return;

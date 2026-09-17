@@ -234,6 +234,26 @@ class TestBusinessSemantics(unittest.TestCase):
         row['state'] = 'validated'
         self.assertTrue(matches(domain, row))
 
+    def test_operational_rank_keeps_other_groups_and_exact_drill(self):
+        groups = [dict(process=(i, 'Proceso %s' % i), __count=i, quantity=i / 10,
+                       __domain=[('company_id', '=', 1), ('process', '=', i)]) for i in range(1, 21)]
+        model = types.SimpleNamespace(check_access_rights=lambda mode: True,
+            read_group=lambda *a, **kw: groups, _fields={'process': types.SimpleNamespace(type='many2one')})
+        env = type('Environment', (dict,), {})({'quality.inspection': model})
+        env.companies = types.SimpleNamespace(ids=[1])
+        self.service.env = env
+        spec = dict(model='quality.inspection', label='Inspecciones', scope='actual', domain=[('company_id', '=', 1)])
+        panel = self.service._group_panel(spec, 'test', 'Procesos', 'process')
+        self.assertEqual(sum(r['value'] for r in panel['rows']), 210)
+        others = panel['rows'][-1]
+        self.assertEqual((others['label'], others['value']), ('Otros', 15))
+        self.assertTrue(matches(others['action']['domain'], dict(company_id=1, process=1)))
+        self.assertFalse(matches(others['action']['domain'], dict(company_id=1, process=20)))
+        self.assertFalse(matches(others['action']['domain'], dict(company_id=2, process=1)))
+        # Quantities/currencies retain every group; never create a mixed-unit Others.
+        amounts = self.service._group_panel(spec, 'test', 'Cantidades', 'process', measure='quantity')
+        self.assertEqual(len(amounts['rows']), 20)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -38,7 +38,10 @@ class ExecutiveAnalytics(models.AbstractModel):
                 f[name] = int(filters.get(name) or 0)
                 if f[name] < 0:
                     raise ValueError()
-            f['currency_id'] = int(filters.get('currency_id') or service.env.company.currency_id.id)
+            raw_currency = filters.get('currency_id')
+            f['currency_id'] = int(raw_currency) if raw_currency not in (None, '') else service.env.company.currency_id.id
+            if f['currency_id'] < 0:
+                raise ValueError()
             f['inactivity_days'] = int(filters.get('inactivity_days') or 90)
             f['cadence_factor'] = float(filters.get('cadence_factor') or 2)
             if not 7 <= f['inactivity_days'] <= 730 or not 1 <= f['cadence_factor'] <= 6:
@@ -48,7 +51,7 @@ class ExecutiveAnalytics(models.AbstractModel):
                 raise ValueError()
         except (TypeError, ValueError, OverflowError):
             raise ValidationError(_('Revise filtros, inactividad (7–730 días) y frecuencia (1–6).'))
-        if not service.env['res.currency'].search_count([('id', '=', f['currency_id'])]):
+        if f['currency_id'] and not service.env['res.currency'].search_count([('id', '=', f['currency_id'])]):
             raise ValidationError(_('Moneda no disponible.'))
         selected = [v for v in f['warehouse_ids'] if v]
         if selected and service.env['stock.warehouse'].with_context(active_test=False).search_count([
@@ -111,8 +114,9 @@ class ExecutiveAnalytics(models.AbstractModel):
 
     def _sale_domain(self, f, start=None, end=None):
         domain = [('company_id', '=', f['company_id']), ('state', '=', 'sale'),
-                  ('display_type', '=', False), ('is_downpayment', '=', False),
-                  ('currency_id', '=', f['currency_id'])]
+                  ('display_type', '=', False), ('is_downpayment', '=', False)]
+        if f['currency_id']:
+            domain.append(('currency_id', '=', f['currency_id']))
         domain += self._warehouse_domain(f, 'hmx_warehouse_id')
         for key, field in [('customer_id', 'hmx_customer_id'), ('product_id', 'product_id'),
                            ('family_id', 'hmx_family_id'), ('seller_id', 'hmx_seller_id')]:
@@ -154,13 +158,27 @@ class ExecutiveAnalytics(models.AbstractModel):
     def _invoice_domain(self, f, start, end):
         domain = [('company_id', '=', f['company_id']), ('parent_state', '=', 'posted'),
                   ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
-                  ('display_type', '=', 'product'), ('currency_id', '=', f['currency_id'])]
+                  ('display_type', '=', 'product')]
+        if f['currency_id']:
+            domain.append(('currency_id', '=', f['currency_id']))
         domain += self._period_domain('move_id.invoice_date', start, end, True)
         domain += self._warehouse_domain(f, 'hmx_warehouse_id')
         for key, field in [('customer_id', 'move_id.commercial_partner_id'), ('product_id', 'product_id'),
                            ('family_id', 'product_id.categ_id'), ('seller_id', 'move_id.invoice_user_id')]:
             if f[key]:
                 domain.append((field, '=', f[key]))
+        return domain
+
+    def _payment_domain(self, f):
+        domain = [('company_id', '=', f['company_id']), ('state', '=', 'paid'),
+                  ('move_id.state', '=', 'posted'), ('partner_type', '=', 'customer'),
+                  ('payment_type', '=', 'inbound'),
+                  ('destination_account_id.account_type', '=', 'asset_receivable'),
+                  ('paired_internal_transfer_payment_id', '=', False)]
+        if f['currency_id']:
+            domain.append(('currency_id', '=', f['currency_id']))
+        if f['customer_id']:
+            domain.append(('partner_id.commercial_partner_id', '=', f['customer_id']))
         return domain
 
     def _financial_cards(self, f, currency):
@@ -179,13 +197,7 @@ class ExecutiveAnalytics(models.AbstractModel):
                 reason='No atribuible a almacén, producto, familia o vendedor sin reparto verificable. Quite esos filtros para consultar.',
                 definition=definition))
         else:
-            domain = [('company_id', '=', f['company_id']), ('currency_id', '=', f['currency_id']),
-                      ('state', '=', 'paid'), ('move_id.state', '=', 'posted'),
-                      ('partner_type', '=', 'customer'), ('payment_type', '=', 'inbound'),
-                      ('destination_account_id.account_type', '=', 'asset_receivable'),
-                      ('paired_internal_transfer_payment_id', '=', False)]
-            if f['customer_id']:
-                domain.append(('partner_id.commercial_partner_id', '=', f['customer_id']))
+            domain = self._payment_domain(f)
             cards.append(self._card('collected', 'Cobros registrados', 'account.payment',
                 domain + self._period_domain('date', f['date_from'], f['date_to'], True),
                 domain + self._period_domain('date', f['previous_from'], f['previous_to'], True),
@@ -248,6 +260,37 @@ class ExecutiveAnalytics(models.AbstractModel):
             result.append(dict(row, share=100 * row['current'] / total if total else None,
                                cumulative=100 * cumulative / total if total > 0 and all(r['current'] >= 0 for r in rows) else None))
         return result
+
+    def _chart_identities(self, data):
+        """Read identifiers in batches for plotted records, without changing totals."""
+        for dimension, model, code_field, name_field in [
+                ('customer', 'res.partner', 'company_registry', 'name'),
+                ('product', 'product.product', 'default_code', 'display_name')]:
+            rows = list(data.get('dimensions', {}).get(dimension, []))
+            rows += data.get('dimensions', {}).get(dimension + '_drivers', [])
+            rows += [row for panel in data.get('panels', []) if panel.get('dimension') == dimension
+                     for row in panel['rows']]
+            if dimension == 'customer' and data.get('customers'):
+                rows += [row for row in data['customers']['rows'] if row.get('months')]
+            ids = sorted({row['id'] for row in rows if isinstance(row['id'], int) and row['id']})
+            if not ids:
+                continue
+            try:
+                # search/read retains supplier extensions and access rules.
+                records = self.env[model].with_context(active_test=False).search([
+                    ('id', 'in', ids)]).read([code_field, name_field])
+            except AccessError:
+                continue  # Keep the already visible label; never elevate access for a caption.
+            identities = {record['id']: record for record in records}
+            for row in rows:
+                record = identities.get(row['id'])
+                if record is None:
+                    continue
+                code = (record[code_field] or '').strip()
+                name = record[name_field] or row['label']
+                if dimension == 'product' and code and name.startswith('[%s] ' % code):
+                    name = name[len(code) + 3:]  # Preserve variant attributes, omit repeated reference.
+                row.update(chart_code=code, chart_name=name)
 
     def _series(self, f):
         # Exact selected days in every monthly bucket; previous curve has its own date labels.
@@ -484,6 +527,8 @@ class ExecutiveAnalytics(models.AbstractModel):
                 for key, field in [('customer_id', 'hmx_customer_id'), ('seller_id', 'hmx_seller_id')]:
                     if f[key]:
                         extra.append((field, '=', f[key]))
+            if f['currency_id'] and model in ('sale.order', 'sale.order.line', 'purchase.order'):
+                extra.append(('currency_id', '=', f['currency_id']))
             spec['domain'] += extra
             if spec['denominator'] is not None:
                 spec['denominator'] += extra
@@ -496,11 +541,49 @@ class ExecutiveAnalytics(models.AbstractModel):
             data = super().get_dashboard(tab, filters)
             data['scope_note'] = ('Vista operativa: período para resultados; pendientes y existencias al momento actual. '
                 'Almacenes solo mediante relaciones verificables. Cliente/vendedor solo en líneas comerciales; '
-                'asistencia y evidencias no tienen relación verificable con estos almacenes. Comparación monetaria solo en vistas ejecutivas.')
+                'asistencia y evidencias no tienen relación verificable con estos almacenes. '
+                'Divisa filtra pedidos de venta, compromisos en líneas y órdenes de compra; no filtra movimientos, '
+                'inventario, calidad, evidencias ni asistencia. Mixto conserva cada moneda separada. Comparación monetaria solo en vistas ejecutivas.')
+            service._chart_identities(data)
             return data
+        if not f['currency_id'] and tab != 'produccion' and service.env.user.has_group(SALE_PERMISSION):
+            return service._mixed_dashboard(tab, f)
+        return service._executive_dashboard(tab, dict(f, currency_id=f['currency_id'] or service.env.company.currency_id.id))
+
+    def _mixed_dashboard(self, tab, f):
+        """Discover currencies with visible activity; never sum across currencies."""
+        currencies = set()
+        domains = []
+        # Include the historical population for lost-customer analysis.
+        if tab in ('resumen', 'clientes'):
+            domains.append(('sale.order.line', self._sale_domain(f) + [
+                ('hmx_date', '<', fields.Datetime.to_string(utc_midnight(f['date_to'] + timedelta(days=1))))]))
+        for start, end in [(f['date_from'], f['date_to']), (f['previous_from'], f['previous_to'])]:
+            domains += [('sale.order.line', self._sale_domain(f, start, end)),
+                        ('account.move.line', self._invoice_domain(f, start, end))]
+            if not f['warehouse_ids'] and not any(f[k] for k in ('product_id', 'family_id', 'seller_id')):
+                domains.append(('account.payment', self._payment_domain(f) + self._period_domain('date', start, end, True)))
+        for model, domain in domains:
+            try:
+                for row in self._groups(model, domain, ['currency_id'], []):
+                    value = row['currency_id']
+                    if value:
+                        currencies.add(value[0] if isinstance(value, (tuple, list)) else value)
+            except AccessError:
+                continue  # Each resulting block reports restricted sources explicitly.
+        currencies = currencies or {self.env.company.currency_id.id}
+        blocks = [self._executive_dashboard(tab, dict(f, currency_id=cid), include_production=False)
+                  for cid in sorted(currencies)]
+        return dict(executive=True, mixed=True, currency_blocks=blocks, today=blocks[0]['today'],
+                    updated_at=blocks[0]['updated_at'], period=blocks[0]['period'],
+                    months=blocks[0]['months'],
+                    production=self._production(f) if tab == 'resumen' else None)
+
+    def _executive_dashboard(self, tab, f, include_production=True):
+        service = self
         currency = service.env['res.currency'].browse(f['currency_id']).name
         data = dict(executive=True, cards=[], dimensions={}, series=[], customers=None, volume=[], production=None,
-                    company=service.env.company.name, today=str(f['today']), currency=currency,
+                    company=service.env.company.name, today=str(f['today']), currency=currency, currency_id=f['currency_id'],
                     currency_digits=service.env['res.currency'].browse(f['currency_id']).decimal_places,
                     updated_at=fields.Datetime.context_timestamp(service, fields.Datetime.now()).strftime('%d/%m/%Y %H:%M'),
                     period='%s — %s' % (f['date_from'], f['date_to']),
@@ -551,6 +634,7 @@ class ExecutiveAnalytics(models.AbstractModel):
                 except AccessError:
                     data.update(commercial_available=False, cards=[], dimensions={}, series=[], customers=None, volume=[])
                     data['notes'].insert(0, 'Sin permiso para alguna fuente comercial. No se sustituye el error por cero.')
-        if tab in ('resumen', 'produccion'):
+        if include_production and tab in ('resumen', 'produccion'):
             data['production'] = service._production(f)
+        service._chart_identities(data)
         return data

@@ -286,6 +286,7 @@ class HexagonosAnalytics(models.AbstractModel):
     def _group_panel(self, spec, key, label, groupby, *, measure=None, group=None):
         panel = {'key': key, 'label': label, 'scope': spec['scope'], 'rows': [],
                  'available': True, 'unit': '', 'note': 'Seleccione una fila para abrir sus registros.'}
+        panel['dimension'] = {'order_partner_id': 'customer', 'product_id': 'product'}.get(groupby)
         if group and not self.env.user.has_group(group):
             return dict(panel, available=False, note='Importes restringidos por Control de Costos.')
         model = self.env[spec['model']]
@@ -303,14 +304,19 @@ class HexagonosAnalytics(models.AbstractModel):
                 if value in (False, 'none'):
                     label_value = 'Sin asignar'
                 number = (row.get(measure) or 0) if measure else row['__count']
-                panel['rows'].append({'key': str(index), 'label': str(label_value or 'Sin clasificar'),
+                identity = value[0] if isinstance(value, (tuple, list)) else value
+                panel['rows'].append({'key': str(index), 'id': identity or 0, 'label': str(label_value or 'Sin clasificar'),
                                       'value': number, 'action': self._action(spec, row['__domain'])})
             if ':month' not in groupby:
                 panel['rows'].sort(key=lambda r: r['value'], reverse=True)
             total_groups = len(panel['rows'])
-            panel['rows'] = panel['rows'][:15]
-            if total_groups > 15:
-                panel['note'] = 'Se muestran los 15 grupos principales de %s. El indicador incluye todos.' % total_groups
+            # Do not drop the tail or combine different currencies/units.
+            if total_groups > 15 and not measure and ':month' not in groupby:
+                top, rest = panel['rows'][:15], panel['rows'][15:]
+                rest_domain = spec['domain'] + [(field_name, 'in', [r['id'] or False for r in rest])]
+                panel['rows'] = top + [dict(key='others', id='others', label='Otros',
+                    value=sum(r['value'] for r in rest), action=self._action(spec, rest_domain))]
+                panel['note'] = 'Los 15 grupos principales y Otros incluyen los %s grupos y conservan el total.' % total_groups
             if groupby == 'currency_id':
                 panel['note'] = 'Importes sin impuestos por moneda original; no se suman ni se convierten entre monedas.'
                 panel['unit'] = 'moneda'

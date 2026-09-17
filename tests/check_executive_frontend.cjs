@@ -16,7 +16,7 @@ w.services = {orm:{call:async(model,method,args) => {
  if(method === 'get_filter_options') return fixtures.options[args[0]+'s'];
  if(mode === 'deferred') return new Promise(resolve=>deferred.push({args,resolve}));
  if(mode === 'denied') {const e=new Error('Revocado');e.data={name:'odoo.exceptions.AccessError'};throw e;}
- return structuredClone(fixtures.dashboards[args[0]]);
+ return structuredClone(args[1]?.currency_id === 0 && fixtures.mixed[args[0]] ? fixtures.mixed[args[0]] : fixtures.dashboards[args[0]]);
 }}, action:{doAction:async a=>actions.push(a)}, dialog:{add:()=>{}}, notification:{add:()=>{}}};
 w.Chart=class {static version='4.4.1';constructor(canvas, config){this.config=config;}destroy(){}};
 w.eval(`const {Component,onWillStart,onWillUnmount,useState,useEffect,useRef}=owl;
@@ -38,7 +38,17 @@ const tick=()=>new Promise(r=>setTimeout(r,50));
  assert.ok(actions[0].domain.some(t=>t[0]==='company_id'&&t[2]===1));
  console.log('PASS monetary card opens its exact server domain');
  for(const tab of fixtures.options.tabs){await component.load(tab.key);await tick();assert.ok(!w.document.body.textContent.includes('NaN'));}
- console.log('PASS all executive views render without NaN or template errors');
+ console.log('PASS all executive and operational views render without NaN or template errors');
+ const currency=w.document.querySelector('select[name=currency_id]');
+ assert.ok(currency && !currency.closest('.hmx_more'));
+ component.changeCurrency({target:{value:'0'}});await tick();await tick();
+ await component.load('resumen');await tick();
+ assert.equal(w.document.querySelectorAll('.hmx_currency_block').length,2);
+ assert.equal(w.document.querySelectorAll('.hmx_exec_metrics article').length,6);
+ assert.ok(w.document.body.textContent.includes('800 USD'));
+ assert.ok(w.document.body.textContent.includes('350 MXN'));
+ console.log('PASS prominent currency filter and separate mixed currency totals');
+ component.changeCurrency({target:{value:'1'}});await tick();await tick();
  await component.load('clientes');await tick();
  assert.ok(w.document.body.textContent.includes('Reactivado'));
  assert.equal(w.document.querySelectorAll('.hmx_heatmap tbody tr').length,3);

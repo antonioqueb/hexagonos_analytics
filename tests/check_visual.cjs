@@ -15,7 +15,7 @@ class Dialog extends Component{static props=['*'];static template=owl.xml\`<div>
 const services={orm:{call:async(model,method,args)=>{
  if(method==='get_options') return structuredClone(fixtures.options);
  if(method==='get_filter_options') return fixtures.options[args[0]+'s'];
- return structuredClone(fixtures.dashboards[args[0]]);
+ return structuredClone(args[1]?.currency_id === 0 && fixtures.mixed[args[0]] ? fixtures.mixed[args[0]] : fixtures.dashboards[args[0]]);
 }},action:{doAction:async action=>window.lastAction=action},dialog:{add:()=>{}},notification:{add:()=>{}}};
 ${source}
 window.app=new owl.App(window.Dashboard,{templates:${JSON.stringify('<templates>'+templates+'</templates>')}});
@@ -55,6 +55,37 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  await page.locator('.hmx_heatmap').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'customers.png')});
  await page.getByRole('button',{name:'Producción por almacén',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('canvas').length===1);
  assert.deepEqual(errors,[]);assert.deepEqual(await contrast(),[]);
+ // Every operational panel is rendered through Chart.js, including currency/UOM splits.
+ for(const [tab,count] of [['Calidad',4],['Entregas',4],['Abastecimiento',6],['Inventario',5],['Evidencias',1],['Asistencia',3]]){
+  await page.getByRole('button',{name:tab,exact:true}).click();
+  await page.waitForFunction(n=>Object.keys(Chart.instances).length===n,count);
+  assert.equal(await page.locator('.hmx_bars').count(),0);
+  assert.deepEqual(await contrast(),[]);assert.deepEqual(errors,[]);
+  const types=await page.evaluate(()=>Object.values(Chart.instances).map(c=>c.config.type));
+  if(['Calidad','Evidencias','Asistencia'].includes(tab))assert.ok(types.includes('doughnut'));
+  await page.locator('.hmx_panels').first().scrollIntoViewIfNeeded();
+  if(['Calidad','Inventario','Asistencia','Entregas'].includes(tab))await page.screenshot({path:path.join(qa,`charts-${tab}.png`)});
+  const chart=Object.values(await page.evaluate(()=>Object.values(Chart.instances).map(c=>({unit:c.config.options.scales.x?.title?.text,type:c.config.type}))));
+  assert.ok(chart.length);
+ }
+ await page.getByRole('button',{name:'Entregas',exact:true}).click();await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
+ const tooltipCheck=await page.evaluate(()=>{
+  const c=Object.values(Chart.instances).find(chart=>chart.canvas.closest('.hmx_panel').querySelector('h3').textContent==='Líneas vencidas por cliente');const point=c.getDatasetMeta(0).data[0];
+  c.tooltip.setActiveElements([{datasetIndex:0,index:0}],{x:point.x,y:point.y});c.update();
+  c.options.onClick(null,[{datasetIndex:0,index:0}]);
+  return {labels:c.data.labels,title:c.tooltip.title,tooltipRight:c.tooltip.x+c.tooltip.width,width:c.width,action:window.lastAction};
+ });
+ assert.ok(tooltipCheck.labels[0][1].endsWith('…'));
+ assert.ok(tooltipCheck.title.join('').includes('NOMBRE COMERCIAL'));
+ assert.ok(tooltipCheck.tooltipRight<=tooltipCheck.width+1);
+ assert.equal(tooltipCheck.action.res_model,'sale.order.line');
+ await page.getByRole('button',{name:'Resumen ejecutivo',exact:true}).click();await page.waitForSelector('.hmx_exec_metrics');
+ await page.locator('select[name=currency_id]').selectOption('0');
+ await page.waitForFunction(()=>document.querySelectorAll('.hmx_currency_block').length===2);
+ assert.equal(await page.locator('.hmx_exec_metrics article').count(),6);
+ assert.equal(await page.getByRole('heading',{name:'Producción por almacén de fabricación',exact:true}).count(),1);
+ assert.deepEqual(await contrast(),[]);assert.deepEqual(errors,[]);
+ await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);await page.screenshot({path:path.join(qa,'mixed.png')});
  for(const width of [390,768]){
   await page.setViewportSize({width,height:900});
   await page.getByRole('button',{name:'Resumen ejecutivo',exact:true}).click();await page.waitForSelector('.hmx_exec_metrics');
@@ -62,7 +93,10 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
   assert.deepEqual(await contrast(),[]);
   await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(qa,`screen-${width}.png`)});
+  await page.getByRole('button',{name:'Entregas',exact:true}).click();await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
+  assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+  await page.locator('.hmx_panels').first().scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,`operational-${width}.png`)});
  }
  assert.deepEqual(errors,[]);await browser.close();
- console.log('PASS Chart.js 4.4.1 renders; desktop 1440, tablet 768, mobile 390; no page overflow; all inspected text contrasts >=4.5:1, including open menus and hovers.');
+ console.log('PASS Chart.js 4.4.1 in every view; identifiers/short labels/full tooltips; chart drills; mixed currencies; desktop 1440, tablet 768, mobile 390; no page overflow; inspected contrasts >=4.5:1.');
 })().catch(e=>{console.error(e);process.exitCode=1;process.exit(1)});

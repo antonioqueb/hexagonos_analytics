@@ -105,6 +105,8 @@
     .hmx_panel_heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .hmx_panel_note { font-size: 13px; color: var(--hmx-muted); margin: 6px 0 18px; }
     .hmx_full { margin-top: 20px; }
+    .hmx_currency_block { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid var(--hmx-border); }
+    .hmx_currency_overview { margin-bottom: 24px; }
     .hmx_chart { position: relative; height: 300px; min-width: 0; }
     .hmx_chart_table { margin-top: 15px; font-size: 13px; }
     .hmx_table_scroll { overflow-x: auto; max-width: 100%; margin-top: 12px; }
@@ -117,6 +119,7 @@
         th:first-child { min-width: 150px; max-width: 280px; overflow-wrap: anywhere; }
     }
     .hmx_heatmap { th:first-child { min-width: 220px; position: sticky; left: 0; z-index: 1; background: white; }
+        .hmx_heat_label { display: block; max-width: 240px; overflow-wrap: anywhere; }
         th, td { padding: 4px; } button { width: 100%; padding: 10px 7px; border: 1px solid #BBC9E5; font-size: 12px; white-space: nowrap; }
         .heat_0 { color: #42526B; background: #F3F5FA; }
         .heat_1 { color: #19356F; background: #E2EAFE; }
