@@ -6,6 +6,7 @@ import { Dialog } from '@web/core/dialog/dialog';
 import { Component, onWillStart, onWillUnmount, useState, useRef, useExternalListener } from '@odoo/owl';
 import { user } from '@web/core/user';
 import { AnalyticsChart, commercialCharts, productionCharts, operationalCharts, entityChartLabel, entityFullLabel } from './charts';
+import { mixedViewData, mixedHeatRows } from './mixed';
 
 const MODEL = 'hexagonos.analytics';
 const numberFormat = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 6 });
@@ -101,7 +102,7 @@ export class HexagonosAnalytics extends Component {
         try {
             const data = await this.orm.call(MODEL, 'get_dashboard', [tab, filters]);
             if (this.alive && request === this.requestId) {
-                this.state.data = data;
+                this.state.data = mixedViewData(data);
                 this.state.pending = false;
                 this.state.updatedAt = data.updated_at;
                 this.loadedFilters = filters;
@@ -234,6 +235,7 @@ export class HexagonosAnalytics extends Component {
         return labels;
     }
     get charts() { return this.state.data?.executive ? commercialCharts(this.state.data, this.state.tab) : []; }
+    valuesFor(row, data) { return row.currency_values || [{ ...row, currency: data.currency, currency_digits: data.currency_digits }]; }
     chartsFor(data) { return commercialCharts(data, this.state.tab); }
     productionChartsFor(data) { return productionCharts(data); }
     get operationalCharts() { return this.state.data && !this.state.data.executive ? operationalCharts(this.state.data) : []; }
@@ -245,7 +247,10 @@ export class HexagonosAnalytics extends Component {
     get customers() { return this.customersFor(this.state.data); }
     customerRowsFor(data) { return this.customersFor(data).slice(this.state.customerPage * 25, (this.state.customerPage + 1) * 25); }
     get customerRows() { return this.customerRowsFor(this.state.data); }
-    heatRowsFor(data) { return [...(data?.customers?.rows || [])].filter(r => r.months.length).sort((a, b) => b.current - a.current).slice(0, 15); }
+    heatRowsFor(data) { return data.mixed ? mixedHeatRows(data) : [...(data?.customers?.rows || [])].filter(r => r.months.length).sort((a, b) => b.current - a.current).slice(0, 15); }
+    heatCurrencyClass(value, currencyId, data) {
+        return value === null ? 'heat_missing' : this.heatClass(value, data.currency_blocks.find(block => block.currency_id === currencyId));
+    }
     heatLabel(row) {
         const label = entityChartLabel(row, 'customer');
         return Array.isArray(label) ? label.join(' · ') : label;

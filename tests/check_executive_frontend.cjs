@@ -23,7 +23,7 @@ w.eval(`const {Component,onWillStart,onWillUnmount,useState,useEffect,useRef,use
 const useService=name=>services[name]; const user={userId:12}; const loadBundle=async()=>{};
 const registry={category:()=>({add:(k,v)=>window.Dashboard=v})};
 class Dialog extends Component {static props=['*'];static template=owl.xml\`<div><t t-slot="default"/></div>\`;}
-`+['charts.js','analytics.js'].map(f=>fs.readFileSync(path.join(root,'static/src',f),'utf8').replace(/^import .*;\n/gm,'').replace(/export (class|function) /g,'$1 ')).join('\n'));
+`+['mixed.js','charts.js','analytics.js'].map(f=>fs.readFileSync(path.join(root,'static/src',f),'utf8').replace(/^import .*;\n/gm,'').replace(/export (class|function) /g,'$1 ')).join('\n'));
 const tick=()=>new Promise(r=>setTimeout(r,50));
 (async()=>{
  const app=new w.owl.App(w.Dashboard,{templates:`<templates>${templates}</templates>`});
@@ -44,12 +44,29 @@ const tick=()=>new Promise(r=>setTimeout(r,50));
  assert.ok(currency && !currency.closest('.hmx_more'));
  component.changeCurrency({target:{value:'0'}});await tick();await tick();
  await component.load('resumen');await tick();
- assert.equal(w.document.querySelectorAll('.hmx_currency_block').length,2);
+ assert.equal(w.document.querySelectorAll('.hmx_currency_block').length,0);
+ assert.equal(w.document.querySelectorAll('.hmx_heatmap').length,1);
  assert.equal(w.document.querySelector('select[name=currency_id]').value,'0');
- assert.equal(w.document.querySelectorAll('.hmx_exec_metrics article').length,6);
+ assert.equal(w.document.querySelectorAll('.hmx_exec_metrics article').length,3);
  assert.ok(w.document.body.textContent.includes('800 USD'));
  assert.ok(w.document.body.textContent.includes('350 MXN'));
- console.log('PASS prominent currency filter and separate mixed currency totals');
+ assert.equal(component.state.data.customers.rows.length,3);
+ assert.equal(component.state.data.customers.cohorts.find(row=>row.key==='recurring').count,2);
+ const shared=component.state.data.customers.rows.find(row=>row.id===1);
+ assert.equal(shared.currency_values.length,2);
+ const usdCard=Array.from(w.document.querySelectorAll('.hmx_exec_metrics .hmx_value')).find(el=>el.textContent==='800 USD');
+ usdCard.click();await tick();
+ assert.ok(actions.at(-1).domain.some(t=>t[0]==='currency_id'&&t[2]===2));
+ for(const tab of ['comercial','clientes','productos']){
+  await component.load(tab);await tick();
+  assert.equal(w.document.querySelectorAll('.hmx_exec_metrics article').length,3);
+  assert.ok(!w.document.body.textContent.includes('NaN'));
+  assert.equal(w.document.querySelectorAll('.hmx_method').length,1);
+  const keys=component.charts.map(chart=>chart.key);
+  assert.equal(new Set(keys).size,keys.length);
+  assert.ok(component.charts.every(chart=>chart.facets.length===2));
+ }
+ console.log('PASS unified mixed cards/charts/customers in all commercial views; unique customer counts; USD detail keeps its currency');
  component.changeCurrency({target:{value:'1'}});await tick();await tick();
  await component.load('clientes');await tick();
  assert.ok(w.document.body.textContent.includes('Reactivado'));

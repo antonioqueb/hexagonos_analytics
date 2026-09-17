@@ -162,8 +162,6 @@
     .hmx_panel_heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .hmx_panel_note { font-size: 13px; color: var(--hmx-muted); margin: 6px 0 18px; }
     .hmx_full { margin-top: 20px; }
-    .hmx_currency_block { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid var(--hmx-border); }
-    .hmx_currency_overview { margin-bottom: 24px; }
     .hmx_chart { position: relative; height: 300px; min-width: 0; }
     .hmx_chart_table { margin-top: 15px; font-size: 13px; }
     .hmx_table_scroll { overflow-x: auto; max-width: 100%; margin-top: 12px; }
@@ -196,6 +194,25 @@
     .hmx_notice, .hmx_method { background: #E9EEFC; color: #243854; padding: 16px 20px; border-left: 4px solid #1946BA; border-radius: 0 8px 8px 0; margin: 18px 0; font-size: 13px; }
     .hmx_method summary { font-weight: 700; }
     .hmx_reconciliation { color: var(--hmx-muted); font-size: 12px; margin-top: 16px; }
+    .hmx_single_metric { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
+    .hmx_currency_metric { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; width: 100%; padding: 14px 0; border-top: 1px solid var(--hmx-border);
+        .hmx_value { margin: 0; font-size: 25px; }
+        > span { font-size: 12px; text-align: right; }
+        p, > .hmx_link, > .hmx_restricted { grid-column: 1 / -1; margin: 0; }
+        > .hmx_link { justify-self: start; }
+    }
+    .hmx_inline_currencies { display: flex; flex-wrap: wrap; gap: 4px 28px; }
+    .hmx_insight_value { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+    .hmx_mixed_chart { grid-column: 1 / -1; }
+    .hmx_chart_facets { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .hmx_chart_facet { min-width: 0; padding: 12px; border: 1px solid var(--hmx-border); border-radius: 8px;
+        .hmx_panel_heading h3 { font-size: 13px; color: var(--hmx-dark); letter-spacing: .04em; }
+    }
+    .hmx_heat_currencies { display: flex; flex-direction: column; gap: 3px; min-width: 95px;
+        button, .heat_missing { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+        small { font-size: 10px; font-weight: 600; }
+        .heat_missing { padding: 10px 7px; font-size: 12px; color: var(--hmx-muted); background: #F3F5FA; }
+    }
     .hmx_empty { background: #EDF1F7; padding: 24px; color: var(--hmx-muted); border-radius: 8px; text-align: center; }
     .hmx_loading { padding: 60px 20px; text-align: center; color: #1946BA; }
     .hmx_pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px;
@@ -217,5 +234,7 @@
         .hmx_value { font-size: 29px; } .hmx_chart { height: 280px; }
         .hmx_panel_heading { flex-wrap: wrap; }
         .hmx_table th:first-child { min-width: 130px; }
+        .hmx_chart_facets { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+        .hmx_chart_facet { padding: 8px; }
     }
 }

@@ -4,7 +4,7 @@ const qa=process.argv[2], addon=path.resolve(__dirname,'..');
 const {chromium}=require(path.join(qa,'node_modules/playwright'));
 let templates=['analytics.xml','executive.xml'].map(f=>fs.readFileSync(path.join(addon,'static/src',f),'utf8').replace(/<\?xml[^>]*>/,'').replace(/<templates[^>]*>/,'').replace('</templates>','')).join('');
 templates=templates.replace('/hexagonos_analytics/static/description/icon.svg','data:image/svg+xml;base64,'+fs.readFileSync(path.join(addon,'static/description/icon.svg')).toString('base64'));
-const source=['charts.js','analytics.js'].map(f=>fs.readFileSync(path.join(addon,'static/src',f),'utf8').replace(/^import .*;\n/gm,'').replace(/export (class|function) /g,'$1 ')).join('\n');
+const source=['mixed.js','charts.js','analytics.js'].map(f=>fs.readFileSync(path.join(addon,'static/src',f),'utf8').replace(/^import .*;\n/gm,'').replace(/export (class|function) /g,'$1 ')).join('\n');
 const html=`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body,#mount{height:100%;margin:0}*{box-sizing:border-box}button,input,select{font:inherit}h1,h2,h3,p{margin-top:0}</style><link rel="stylesheet" href="analytics.css"></head><body><main id="mount"></main>
 <script src="node_modules/@odoo/owl/dist/owl.iife.js"></script><script src="node_modules/chart.js/dist/chart.umd.js"></script><script>
 const fixtures=${fs.readFileSync(path.join(qa,'fixtures.json'),'utf8')};
@@ -84,6 +84,11 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
   await navigate(tab);
   await page.waitForFunction(n=>Object.keys(Chart.instances).length===n,count);
   assert.equal(await page.locator('.hmx_bars').count(),0);
+  if(tab==='Abastecimiento'){
+   assert.equal(await page.getByRole('heading',{name:'Compra confirmada por moneda',exact:true}).count(),1);
+   assert.equal(await page.locator('.hmx_mixed_chart canvas').count(),2);
+   assert.equal(await page.locator('.hmx_mixed_chart .hmx_chart_table').count(),1);
+  }
   assert.deepEqual(await contrast(),[]);assert.deepEqual(errors,[]);
   const types=await page.evaluate(()=>Object.values(Chart.instances).map(c=>c.config.type));
   if(['Calidad','Evidencias','Asistencia'].includes(tab))assert.ok(types.includes('doughnut'));
@@ -105,19 +110,41 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  assert.equal(tooltipCheck.action.res_model,'sale.order.line');
  await navigate('Resumen ejecutivo');await page.waitForSelector('.hmx_exec_metrics');
  await page.locator('select[name=currency_id]').selectOption('0');
- await page.waitForFunction(()=>document.querySelectorAll('.hmx_currency_block').length===2);
- assert.equal(await page.locator('.hmx_exec_metrics article').count(),6);
+ await page.waitForFunction(()=>document.querySelectorAll('.hmx_currency_metric').length===6);
+ assert.equal(await page.locator('.hmx_exec_metrics article').count(),3);
+ assert.equal(await page.locator('.hmx_heatmap').count(),1);
+ assert.equal(await page.locator('.hmx_currency_block').count(),0);
  assert.equal(await page.getByRole('heading',{name:'Producción por almacén de fabricación',exact:true}).count(),1);
+ assert.equal(await page.getByRole('heading',{name:'¿Cómo evoluciona la venta?',exact:true}).count(),1);
+ assert.equal(await page.getByRole('heading',{name:'Seguimiento comercial',exact:true}).count(),1);
  assert.deepEqual(await contrast(),[]);assert.deepEqual(errors,[]);
  await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);await page.screenshot({path:path.join(qa,'mixed.png')});
+ const trend=page.locator('.hmx_mixed_chart').filter({has:page.getByRole('heading',{name:'¿Cómo evoluciona la venta?',exact:true})});
+ assert.equal(await trend.locator('canvas').count(),2);
+ assert.equal(await trend.locator('.hmx_chart_table').count(),1);
+ const mixedDrill=await page.evaluate(()=>{
+  const c=Object.values(Chart.instances).find(chart=>chart.canvas.getAttribute('aria-label').startsWith('¿Cómo evoluciona la venta? · USD'));
+  c.options.onClick(null,[{datasetIndex:0,index:0}]);
+  return {unit:c.options.scales.y.title.text,action:window.lastAction};
+ });
+ assert.equal(mixedDrill.unit,'USD');
+ assert.ok(mixedDrill.action.domain.some(t=>t[0]==='currency_id'&&t[2]===2));
+ await trend.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'mixed-charts.png')});
+ await page.locator('.hmx_heatmap').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'mixed-customers.png')});
  for(const width of [390,768]){
   await page.setViewportSize({width,height:900});
   await navigate('Resumen ejecutivo');await page.waitForSelector('.hmx_exec_metrics');
   assert.equal(await page.getByRole('combobox',{name:'Vista del negocio',exact:true}).inputValue(),'resumen');
+  // Chart.js resizes canvases in ResizeObserver/animation frames after the viewport changes.
+  await page.waitForFunction(()=>{const el=document.querySelector('.hmx_analytics');return el.scrollWidth<=el.clientWidth+1;},{},{timeout:5000});
   assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
   assert.deepEqual(await contrast(),[]);
   await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(qa,`screen-${width}.png`)});
+  await page.locator('.hmx_mixed_chart').first().scrollIntoViewIfNeeded();
+  assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+  await page.screenshot({path:path.join(qa,`mixed-charts-${width}.png`)});
+  await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);
   for(const [menu,close] of [['period','Cerrar período'],['warehouses','Cerrar almacenes'],['more','Cerrar filtros']]){
    await page.locator(`.hmx_${menu} > summary`).click();
    const box=await page.locator(`.hmx_${menu} > .hmx_dropdown_body`).boundingBox();

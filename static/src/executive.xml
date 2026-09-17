@@ -3,37 +3,46 @@
     <t t-name="hexagonos_analytics.Executive">
         <div class="hmx_section_heading"><div><h2><t t-esc="state.options.tabs.find(t => t.key === state.tab).label"/><t t-if="state.tab !== 'produccion'"> · <t t-esc="viewData.currency"/></t></h2>
             <p><t t-esc="viewData.period"/> · comparación: <t t-esc="viewData.comparison_period"/></p></div>
-            <span t-if="state.tab !== 'produccion'">Importes sin impuestos, salvo cobros · <t t-esc="viewData.currency"/></span>
+            <span t-if="state.tab !== 'produccion'"><t t-if="viewData.mixed">Mixto · importes en su divisa original, sin conversión</t><t t-else="">Importes sin impuestos, salvo cobros · <t t-esc="viewData.currency"/></t></span>
         </div>
         <div class="hmx_metrics hmx_exec_metrics" t-if="viewData.cards.length">
             <article t-foreach="viewData.cards" t-as="card" t-key="card.key" class="hmx_metric">
                 <span class="hmx_scope">Período seleccionado</span><h3 t-esc="card.label"/>
-                <t t-if="card.available">
-                    <button class="hmx_value" t-on-click="() => this.openAction(card.action)"><t t-esc="money(card.current, viewData)"/></button>
-                    <p t-if="card.record_count === 0">Sin registros visibles en el período.</p>
-                    <span t-att-class="card.difference &lt; 0 ? 'hmx_down' : 'hmx_up'" t-esc="variation(card)"/>
-                    <p>Diferencia: <b><t t-esc="signed(card.difference, viewData.currency_digits)"/> <t t-esc="card.unit"/></b></p>
-                    <button class="hmx_link" t-on-click="() => this.openAction(card.previous_action)">Anterior: <t t-esc="money(card.previous, viewData)"/></button>
-                </t>
-                <t t-else=""><strong class="hmx_restricted">No disponible</strong><p t-esc="card.reason"/></t>
+                <div t-foreach="valuesFor(card, viewData)" t-as="value" t-key="value.currency" t-att-class="viewData.mixed ? 'hmx_currency_metric' : 'hmx_single_metric'">
+                    <t t-if="value.available">
+                        <button class="hmx_value" t-on-click="() => this.openAction(value.action)"><t t-esc="money(value.current, value)"/></button>
+                        <span t-att-class="value.difference &lt; 0 ? 'hmx_down' : 'hmx_up'" t-esc="variation(value)"/>
+                        <p t-if="value.record_count === 0" class="hmx_panel_note">Sin registros visibles en el período.</p>
+                        <p>Diferencia: <b><t t-esc="signed(value.difference, value.currency_digits)"/> <t t-esc="value.currency"/></b></p>
+                        <button class="hmx_link" t-on-click="() => this.openAction(value.previous_action)">Anterior: <t t-esc="money(value.previous, value)"/></button>
+                    </t>
+                    <t t-else=""><strong class="hmx_restricted"><t t-if="viewData.mixed"><t t-esc="value.currency"/> · </t>No disponible</strong><p t-esc="value.reason"/></t>
+                </div>
                 <details class="hmx_formula"><summary>Fecha, fórmula y alcance</summary><p t-esc="card.definition"/></details>
             </article>
         </div>
         <div class="hmx_notice" t-if="viewData.partial">
-            <strong>Mes abierto · comparación del mismo tramo</strong><p>Actual: <t t-esc="viewData.period"/>. Anterior: <t t-esc="viewData.partial.period"/>.
+            <strong>Mes abierto · comparación del mismo tramo</strong><p>Actual: <t t-esc="viewData.period"/>. Anterior: <t t-esc="viewData.partial.period"/>.</p>
+            <div t-if="viewData.mixed" class="hmx_inline_currencies"><p t-foreach="viewData.partial_values" t-as="value" t-key="value.currency"><b t-esc="value.currency"/>: <t t-esc="money(value.current, value)"/> frente a <t t-esc="money(value.previous, value)"/> · <t t-esc="variation(value)"/></p></div>
+            <p t-else="">
                 <t t-esc="money(viewData.partial.current, viewData)"/> frente a <t t-esc="money(viewData.partial.previous, viewData)"/> · <t t-esc="variation(viewData.partial)"/>.</p>
             <p>Resultados reales hasta el corte; no se presenta una proyección de cierre.</p>
         </div>
         <div class="hmx_insights" t-if="viewData.insights.length and (state.tab === 'resumen' or state.tab === 'comercial')">
             <article t-foreach="viewData.insights" t-as="insight" t-key="insight_index">
-                <span>Aportación a la variación</span><button class="hmx_link" t-on-click="() => this.openAction(insight.action)" t-esc="insight.label"/>
-                <b><t t-esc="signed(insight.difference, viewData.currency_digits)"/> <t t-esc="viewData.currency"/></b>
-                <span><t t-esc="money(insight.previous, viewData)"/> → <t t-esc="money(insight.current, viewData)"/></span>
+                <span>Aportación a la variación</span><strong t-esc="insight.label"/>
+                <div t-foreach="valuesFor(insight, viewData)" t-as="value" t-key="value.currency" class="hmx_insight_value">
+                    <button class="hmx_link" t-on-click="() => this.openAction(value.action)"><b><t t-esc="signed(value.difference, value.currency_digits)"/> <t t-esc="value.currency"/></b></button>
+                    <span><t t-esc="money(value.previous, value)"/> → <t t-esc="money(value.current, value)"/></span>
+                </div>
             </article>
         </div>
         <div t-if="viewData.commercial_available === false" class="hmx_empty">Información comercial restringida. Revisa los permisos de lectura y de totales de venta.</div>
+        <p t-if="viewData.mixed and viewData.restricted_currencies.length" class="hmx_notice">Información comercial restringida en: <t t-esc="viewData.restricted_currencies.join(', ')"/>.</p>
+        <p t-if="viewData.mixed" class="hmx_panel_note">Gráficas por divisa, lado a lado y con escalas propias: las alturas no representan importes convertidos. Cada ranking y «Otros» conservan el total de su moneda. Ventas y facturación sin impuestos; cobros pueden incluirlos.</p>
         <div class="hmx_panels"><AnalyticsChart t-foreach="chartsFor(viewData)" t-as="chart" t-key="chart.key" spec="chart" openAction.bind="openAction"/></div>
-        <p class="hmx_reconciliation" t-if="viewData.reconciliation">
+        <details t-if="viewData.mixed and viewData.reconciliations.length" class="hmx_reconciliation"><summary>Conciliación comercial por divisa</summary><p t-foreach="viewData.reconciliations" t-as="value" t-key="value.currency"><b t-esc="value.currency"/>: desglose <t t-esc="money(value.current, value)"/> · consolidado <t t-esc="money(value.previous, value)"/> · diferencia <t t-esc="money(value.difference, value)"/>. Incluye Sin asignar.</p></details>
+        <p class="hmx_reconciliation" t-elif="viewData.reconciliation">
             Conciliación comercial: suma del desglose <t t-esc="money(viewData.reconciliation.current, viewData)"/> · consolidado <t t-esc="money(viewData.reconciliation.previous, viewData)"/> · diferencia <t t-esc="money(viewData.reconciliation.difference, viewData)"/>. Incluye Sin asignar.
         </p>
 
@@ -42,12 +51,16 @@
             <div class="hmx_cohorts"><button t-foreach="viewData.customers.cohorts" t-as="cohort" t-key="cohort.key"
                 t-att-class="state.customerStatus === cohort.key ? 'active' : ''" t-att-aria-pressed="state.customerStatus === cohort.key ? 'true' : 'false'"
                 t-on-click="() => this.changeCustomerList('customerStatus', state.customerStatus === cohort.key ? '' : cohort.key)">
-                <span t-esc="cohort.label"/><b t-esc="cohort.count"/><span t-esc="money(cohort.amount, viewData)"/>
+                <span t-esc="cohort.label"/><b t-esc="cohort.count"/><span t-foreach="valuesFor(cohort, viewData)" t-as="value" t-key="value.currency" t-esc="money(value.amount, value)"/>
             </button></div>
-            <section class="hmx_panel hmx_full"><h3>Compras por cliente y mes</h3><p class="hmx_panel_note">15 clientes con mayor venta actual; detalle individual al pulsar cada celda. Doce meses hasta el corte, con filtros comerciales. 0 significa sin importe registrado; los valores negativos son ajustes.</p>
+            <p t-if="viewData.mixed" class="hmx_panel_note">Cada cliente se cuenta una sola vez. Los importes y la aportación se mantienen por divisa; el estado usa su historial global visible.</p>
+            <section class="hmx_panel hmx_full"><h3>Compras por cliente y mes</h3><p class="hmx_panel_note"><t t-if="viewData.mixed">Hasta 15 clientes, alternando los rankings de cada divisa. Cada moneda tiene su propia intensidad; — indica que no se consultó ese detalle.</t><t t-else="">15 clientes con mayor venta actual.</t> Detalle al pulsar cada importe. Doce meses hasta el corte, con filtros comerciales. 0 significa sin importe registrado; los valores negativos son ajustes.</p>
                 <div class="hmx_table_scroll"><table class="hmx_table hmx_heatmap"><thead><tr><th>Cliente</th><th t-foreach="viewData.customers.months" t-as="month" t-key="month" t-esc="month"/></tr></thead>
                     <tbody><tr t-foreach="heatRowsFor(viewData)" t-as="row" t-key="row.id"><th scope="row" t-att-title="heatFullLabel(row)"><span class="hmx_heat_label" t-esc="heatLabel(row)"/></th>
-                        <td t-foreach="row.months" t-as="month" t-key="month.label"><button t-att-class="heatClass(month.value, viewData)"
+                        <td t-foreach="row.months" t-as="month" t-key="month.label"><div t-if="viewData.mixed" class="hmx_heat_currencies"><t t-foreach="month.currency_values" t-as="value" t-key="value.currency">
+                            <button t-if="value.value !== null" t-att-class="heatCurrencyClass(value.value, value.currency_id, viewData)" t-att-title="heatFullLabel(row) + ' · ' + month.label + ': ' + money(value.value, value)" t-on-click="() => this.openAction(value.action)"><small t-esc="value.currency"/> <t t-esc="number(value.value)"/></button>
+                            <span t-else="" class="heat_missing" t-att-title="value.currency + ': detalle no consultado para este cliente'"><small t-esc="value.currency"/> —</span>
+                        </t></div><button t-else="" t-att-class="heatClass(month.value, viewData)"
                             t-att-title="heatFullLabel(row) + ' · ' + month.label + ': ' + money(month.value, viewData)" t-on-click="() => this.openAction(month.action)" t-esc="number(month.value)"/></td>
                     </tr></tbody>
                 </table></div>
@@ -61,9 +74,11 @@
                     <tbody><tr t-foreach="customerRowsFor(viewData)" t-as="row" t-key="row.id">
                         <th scope="row"><button class="hmx_link" t-on-click="() => this.openAction(row.history_action)" t-esc="row.label"/></th><td t-esc="row.status_label"/>
                         <td t-esc="row.last_purchase || 'Sin fecha'"/><td t-esc="row.days_inactive"/><td t-esc="row.threshold"/>
-                        <td><button class="hmx_link" t-on-click="() => this.openAction(row.action)" t-esc="money(row.current, viewData)"/></td>
-                        <td><button class="hmx_link" t-on-click="() => this.openAction(row.previous_action)" t-esc="money(row.previous, viewData)"/></td>
-                        <td t-esc="signed(row.difference, row.unit ? 6 : viewData.currency_digits)"/><td t-esc="variation(row)"/><td><t t-esc="number(row.share)"/>%</td>
+                        <td><div t-foreach="valuesFor(row, viewData)" t-as="value" t-key="value.currency"><button class="hmx_link" t-on-click="() => this.openAction(value.action)" t-esc="money(value.current, value)"/></div></td>
+                        <td><div t-foreach="valuesFor(row, viewData)" t-as="value" t-key="value.currency"><button class="hmx_link" t-on-click="() => this.openAction(value.previous_action)" t-esc="money(value.previous, value)"/></div></td>
+                        <td><div t-foreach="valuesFor(row, viewData)" t-as="value" t-key="value.currency"><t t-esc="signed(value.difference, value.currency_digits)"/> <t t-esc="value.currency"/></div></td>
+                        <td><div t-foreach="valuesFor(row, viewData)" t-as="value" t-key="value.currency"><small t-if="viewData.mixed" t-esc="value.currency + ': '"/><t t-esc="variation(value)"/></div></td>
+                        <td><div t-foreach="valuesFor(row, viewData)" t-as="value" t-key="value.currency"><small t-if="viewData.mixed" t-esc="value.currency + ': '"/><t t-esc="number(value.share)"/><t t-if="value.share !== null">%</t></div></td>
                     </tr></tbody>
                 </table></div>
                 <div class="hmx_pagination"><button t-att-disabled="state.customerPage === 0" t-on-click="() => state.customerPage--">Anterior</button>
@@ -75,8 +90,8 @@
 
         <section class="hmx_panel hmx_full" t-if="state.tab === 'productos' and viewData.commercial_available">
             <h3>Volumen por familia · unidades separadas</h3>
-            <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Familia</th><th>Unidad</th><th>Actual</th><th>Anterior</th><th>Diferencia</th><th>Variación</th></tr></thead><tbody>
-                <tr t-foreach="viewData.family_volume" t-as="row" t-key="row.id"><th scope="row" t-esc="row.label"/><td t-esc="row.unit"/>
+            <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Familia</th><th t-if="viewData.mixed">Divisa de venta</th><th>Unidad</th><th>Actual</th><th>Anterior</th><th>Diferencia</th><th>Variación</th></tr></thead><tbody>
+                <tr t-foreach="viewData.family_volume" t-as="row" t-key="row.id"><th scope="row" t-esc="row.label"/><td t-if="viewData.mixed" t-esc="row.currency"/><td t-esc="row.unit"/>
                     <td><button class="hmx_link" t-on-click="() => this.openAction(row.action)" t-esc="number(row.current)"/></td>
                     <td><button class="hmx_link" t-on-click="() => this.openAction(row.previous_action)" t-esc="number(row.previous)"/></td>
                     <td t-esc="signed(row.difference, row.unit ? 6 : viewData.currency_digits)"/><td t-esc="variation(row)"/>
@@ -121,8 +136,9 @@
     <t t-name="hexagonos_analytics.Volume">
         <label>Buscar producto o familia <input type="search" t-att-value="state.volumeSearch" t-on-input="ev => { state.volumeSearch = ev.target.value; state.volumePage = 0; }"/></label>
         <t t-set="filteredVolume" t-value="volumeRows.filter(r => (r.label + ' ' + r.family).toLowerCase().includes(state.volumeSearch.toLowerCase()))"/>
-        <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Almacén</th><th>Producto</th><th>Familia</th><th>Unidad</th><th>Actual</th><th>Anterior</th><th>Diferencia</th><th>Variación</th></tr></thead><tbody>
-        <tr t-foreach="filteredVolume.slice(state.volumePage * 50, (state.volumePage + 1) * 50)" t-as="row" t-key="row.id"><th scope="row" t-esc="row.warehouse"/><td t-esc="row.label"/><td t-esc="row.family"/><td t-esc="row.unit"/>
+        <t t-set="volumeHasCurrency" t-value="volumeRows.some(r => r.currency)"/>
+        <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Almacén</th><th>Producto</th><th>Familia</th><th t-if="volumeHasCurrency">Divisa de venta</th><th>Unidad</th><th>Actual</th><th>Anterior</th><th>Diferencia</th><th>Variación</th></tr></thead><tbody>
+        <tr t-foreach="filteredVolume.slice(state.volumePage * 50, (state.volumePage + 1) * 50)" t-as="row" t-key="row.id"><th scope="row" t-esc="row.warehouse"/><td t-esc="row.label"/><td t-esc="row.family"/><td t-if="volumeHasCurrency" t-esc="row.currency"/><td t-esc="row.unit"/>
             <td><button class="hmx_link" t-att-disabled="!row.current_action" t-on-click="() => this.openAction(row.current_action)" t-esc="number(row.current)"/></td>
             <td><button class="hmx_link" t-att-disabled="!row.previous_action" t-on-click="() => this.openAction(row.previous_action)" t-esc="number(row.previous)"/></td>
             <td t-esc="signed(row.difference, row.unit ? 6 : undefined)"/><td t-esc="variation(row)"/></tr>
@@ -132,23 +148,24 @@
             <button t-att-disabled="(state.volumePage + 1) * 50 >= filteredVolume.length" t-on-click="() => state.volumePage++">Siguiente</button></div>
     </t>
 
-    <t t-name="hexagonos_analytics.Chart"><section class="hmx_panel">
+    <t t-name="hexagonos_analytics.Chart"><section t-att-class="props.spec.facets ? 'hmx_panel hmx_mixed_chart' : (props.spec.embedded ? 'hmx_chart_facet' : 'hmx_panel')">
         <div class="hmx_panel_heading"><h3 t-esc="props.spec.title"/><span t-if="props.spec.scope" class="hmx_scope" t-esc="props.spec.scope === 'periodo' ? 'Período seleccionado' : 'Situación actual'"/></div>
-        <p class="hmx_panel_note" t-esc="props.spec.note"/>
+        <p t-if="props.spec.note" class="hmx_panel_note" t-esc="props.spec.note"/>
         <p t-if="props.spec.available === false" class="hmx_empty">Información restringida</p>
         <p t-elif="state.error" class="hmx_notice" role="status" t-esc="state.error"/>
         <p t-elif="!props.spec.rows.length" class="hmx_empty">Sin registros para esta selección.</p>
-        <div t-else="" class="hmx_chart" t-att-style="props.spec.height ? 'height:' + props.spec.height + 'px' : undefined"><canvas t-ref="canvas" role="img" t-att-aria-label="props.spec.title + '. Datos accesibles en la tabla siguiente.'"/></div>
-        <details t-if="props.spec.available !== false and props.spec.tableColumns" class="hmx_chart_table"><summary>Ver cifras y abrir documentos</summary><div class="hmx_table_scroll"><table class="hmx_table"><thead><tr>
+        <div t-elif="props.spec.facets" class="hmx_chart_facets"><AnalyticsChart t-foreach="props.spec.facets" t-as="facet" t-key="facet.unit" spec="facet" openAction="props.openAction"/></div>
+        <div t-else="" class="hmx_chart" t-att-style="props.spec.height ? 'height:' + props.spec.height + 'px' : undefined"><canvas t-ref="canvas" role="img" t-att-aria-label="(props.spec.ariaLabel || props.spec.title) + '. Datos accesibles en la tabla siguiente.'"/></div>
+        <details t-if="!props.spec.hideTable and props.spec.available !== false and props.spec.tableColumns" class="hmx_chart_table"><summary>Ver cifras y abrir documentos</summary><div class="hmx_table_scroll"><table class="hmx_table"><thead><tr>
             <th>Dimensión</th><th t-foreach="props.spec.tableColumns" t-as="column" t-key="column.key" t-esc="column.label"/>
         </tr></thead><tbody><tr t-foreach="props.spec.rows" t-as="row" t-key="row_index"><th scope="row" t-esc="row.label"/>
             <td t-foreach="props.spec.tableColumns" t-as="column" t-key="column.key"><button t-if="row.action" class="hmx_link" t-on-click="() => props.openAction(row.action)" t-esc="number(row[column.key])"/><span t-else="" t-esc="number(row[column.key])"/></td>
         </tr></tbody></table></div></details>
-        <details t-elif="!props.spec.tableColumns" class="hmx_chart_table"><summary>Ver cifras y abrir documentos</summary><div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Dimensión / fechas</th><th>Actual</th><th>Anterior</th><th>Diferencia</th></tr></thead><tbody>
-            <tr t-foreach="props.spec.rows" t-as="row" t-key="row_index"><th scope="row" t-esc="row.label"/>
-                <td><button t-if="row.action" class="hmx_link" t-on-click="() => props.openAction(row.action)" t-esc="number(row.current)"/><span t-else="" t-esc="number(row.current)"/></td>
-                <td><button t-if="row.previous_action" class="hmx_link" t-on-click="() => props.openAction(row.previous_action)" t-esc="number(row.previous)"/><span t-else="" t-esc="number(row.previous)"/></td>
-                <td t-esc="number(row.current - (row.previous || 0))"/></tr>
+        <details t-elif="!props.spec.hideTable and !props.spec.tableColumns" class="hmx_chart_table"><summary>Ver cifras y abrir documentos</summary><div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Dimensión / fechas</th><th t-if="props.spec.currencyTable">Divisa</th><th>Actual</th><th>Anterior</th><th>Diferencia</th></tr></thead><tbody>
+            <tr t-foreach="props.spec.rows" t-as="row" t-key="row_index"><th scope="row" t-esc="row.label"/><td t-if="props.spec.currencyTable" t-esc="row.currency"/>
+                <td><button t-if="row.action" class="hmx_link" t-on-click="() => props.openAction(row.action)" t-esc="number(row.current, row.currency_digits)"/><span t-else="" t-esc="number(row.current, row.currency_digits)"/></td>
+                <td><button t-if="row.previous_action" class="hmx_link" t-on-click="() => props.openAction(row.previous_action)" t-esc="number(row.previous, row.currency_digits)"/><span t-else="" t-esc="number(row.previous, row.currency_digits)"/></td>
+                <td t-esc="number(row.previous === null ? null : row.current - (row.previous || 0), row.currency_digits)"/></tr>
         </tbody></table></div></details>
     </section></t>
 </templates>

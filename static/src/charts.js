@@ -79,7 +79,7 @@ export class AnalyticsChart extends Component {
         useEffect(() => { this.renderChart(); return () => this.chart?.destroy(); }, () => [this.props.spec]);
         onWillUnmount(() => this.chart?.destroy());
     }
-    number(v) { return v === null || v === undefined ? 'Sin base' : new Intl.NumberFormat('es-MX', { maximumFractionDigits: this.props.spec.digits ?? 6 }).format(v); }
+    number(v, digits) { return v === null || v === undefined ? 'Sin base' : new Intl.NumberFormat('es-MX', { maximumFractionDigits: digits ?? this.props.spec.digits ?? 6 }).format(v); }
     renderChart() {
         if (this.state.error || !this.canvas.el) return;
         this.chart?.destroy();
@@ -144,8 +144,11 @@ export class AnalyticsChart extends Component {
         } catch (error) { this.state.error = 'No se pudo dibujar la gráfica. Consulta la tabla de valores.'; }
     }
 }
+// Facets share one heading and one detail table, while each currency retains its scale.
+AnalyticsChart.components = { AnalyticsChart };
 
 export function commercialCharts(data, tab) {
+    if (data.mixed) return mixedCommercialCharts(data, tab);
     if (!data.commercial_available) return [];
     const panels = [];
     const dimensions = data.dimensions;
@@ -209,6 +212,24 @@ export function commercialCharts(data, tab) {
     return panels.map(panel => ({ ...panel, digits: data.currency_digits ?? 2 }));
 }
 
+function mixedCommercialCharts(data, tab) {
+    const groups = new Map();
+    for (const block of data.currency_blocks) {
+        for (const chart of commercialCharts(block, tab)) {
+            if (!groups.has(chart.key)) groups.set(chart.key, { key: chart.key, title: chart.title,
+                note: chart.note,
+                facets: [], rows: [], currencyTable: true });
+            const group = groups.get(chart.key);
+            group.facets.push({ ...chart, embedded: true, hideTable: true,
+                title: block.currency, ariaLabel: `${chart.title} · ${block.currency}`,
+                note: chart.pareto === false ? 'Sin porcentaje acumulado: total cero o importes negativos.' : '',
+            });
+            group.rows.push(...chart.rows.map(row => ({ ...row, currency: block.currency, currency_digits: block.currency_digits })));
+        }
+    }
+    return [...groups.values()];
+}
+
 export function productionCharts(data) {
     const production = data.production;
     if (!production?.available) return [];
@@ -245,11 +266,19 @@ export function operationalCharts(data) {
             }));
         }
         if (panel.unit === 'moneda' || panel.unit === 'cantidad') {
-            return rows.map(row => ({ ...base, key: `${panel.key}_${row.key}`, title: `${panel.label} · ${row.label}`,
+            const charts = rows.map(row => ({ ...base, key: `${panel.key}_${row.key}`, title: `${panel.label} · ${row.label}`,
                 unit: row.label, digits: panel.unit === 'moneda' ? 2 : 6, rows: [row], labels: [row.label],
                 fullLabels: [row.label], tableColumns: [{ key: 'value', label: `Total · ${row.label}` }],
                 datasets: [{ label: 'Total', backgroundColor: BLUE, data: [row.value], actions: [row.action] }],
             }));
+            if (panel.unit === 'moneda' && charts.length > 1) {
+                return [{ ...base, digits: 2, note: `${panel.note || ''} Importes en su divisa original; escalas independientes, sin conversión.`,
+                    tableColumns: [{ key: 'value', label: 'Total en divisa original' }],
+                    facets: charts.map(chart => ({ ...chart, embedded: true, hideTable: true, scope: null,
+                        title: chart.unit, ariaLabel: chart.title, note: '' })),
+                }];
+            }
+            return charts;
         }
         const dimension = panel.dimension;
         const circular = DISTRIBUTIONS.has(panel.key) && rows.length <= 7 && rows.every(row => row.value >= 0);

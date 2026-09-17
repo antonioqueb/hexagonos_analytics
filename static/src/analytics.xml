@@ -90,20 +90,7 @@
                 </div>
                 <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Pulsa Aplicar cambios para consultar la selección.</div>
                 <t t-if="state.data and state.data.executive">
-                    <p t-if="state.data.mixed" class="hmx_notice">Mixto: cada divisa conserva sus importes, comparación y gráficas. No se suman ni convierten monedas. Un cliente puede aparecer en varias divisas; sus conteos no se suman entre bloques.</p>
-                    <section t-if="state.data.mixed" class="hmx_panel hmx_currency_overview"><h2>Resumen por divisa</h2>
-                        <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Divisa</th><th>Ventas confirmadas</th><th>Facturación neta</th><th>Cobros registrados</th></tr></thead><tbody>
-                            <tr t-foreach="state.data.currency_blocks" t-as="currencyBlock" t-key="currencyBlock.currency_id"><th scope="row" t-esc="currencyBlock.currency"/>
-                                <td t-foreach="['sales', 'invoiced', 'collected']" t-as="metricKey" t-key="metricKey"><t t-set="mixedCard" t-value="currencyBlock.cards.find(card => card.key === metricKey)"/>
-                                    <button t-if="mixedCard and mixedCard.available" class="hmx_link" t-on-click="() => this.openAction(mixedCard.action)" t-esc="money(mixedCard.current, currencyBlock)"/><span t-else="">No disponible</span>
-                                </td>
-                            </tr>
-                        </tbody></table></div>
-                    </section>
-                    <section t-foreach="state.data.currency_blocks || [state.data]" t-as="viewData" t-key="viewData.currency_id" t-att-class="state.data.mixed ? 'hmx_currency_block' : ''">
-                        <t t-call="hexagonos_analytics.Executive"/>
-                    </section>
-                    <t t-if="state.data.mixed and state.data.production"><t t-set="viewData" t-value="state.data"/><t t-call="hexagonos_analytics.Production"/></t>
+                    <t t-set="viewData" t-value="state.data"/><t t-call="hexagonos_analytics.Executive"/>
                 </t>
                 <t t-if="state.data and !state.data.executive">
                     <p class="hmx_context" t-if="state.data.scope_note" t-esc="state.data.scope_note"/>
