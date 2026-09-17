@@ -72,9 +72,12 @@ class ExecutiveAnalytics(models.AbstractModel):
             domain += [('display_name', 'ilike', str(query)[:100])]
         try:
             source = self.env[model].with_context(allowed_company_ids=[self.env.company.id], active_test=False)
-            rows = source.search_read(domain, ['display_name'], limit=50, order='id')
+            # Some installed product extensions pass web-only kwargs through
+            # search_read. Use the regular ORM search/read path, retaining the
+            # supplier search override, record rules and field access checks.
+            rows = source.search(domain, limit=50, order='id').read(['display_name'])
             if selected and not any(row['id'] == int(selected) for row in rows):
-                rows += source.search_read([('id', '=', int(selected))], ['display_name'], limit=1)
+                rows += source.search([('id', '=', int(selected))], limit=1).read(['display_name'])
             return [{'id': r['id'], 'name': r['display_name']} for r in rows]
         except AccessError:
             return []

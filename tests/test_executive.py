@@ -1,5 +1,6 @@
 """Integration regressions for an installed Odoo 18 disposable database."""
 from datetime import timedelta
+from unittest.mock import patch
 
 from odoo import Command, fields
 from odoo.tests import TransactionCase, tagged
@@ -32,6 +33,18 @@ class TestExecutiveAnalytics(TransactionCase):
                     'product_uom_qty': 2, 'product_uom': cls.product.uom_id.id,
                     'price_unit': price, 'discount': 10, 'tax_id': [Command.clear()]})]})
         cls.service.flush_model()
+
+    def test_filter_options_with_broken_product_search_read(self):
+        # A third-party override may still forward specification to _read_format.
+        # Analytics must use the supported ORM path for both queries and saved IDs.
+        with patch.object(type(self.product), 'search_read', side_effect=TypeError(
+                "_read_format() got an unexpected keyword argument 'specification'")):
+            options = self.service.get_options()
+            self.assertIn('products', options)
+            result = self.service.get_filter_options('product', self.product.name)
+            self.assertIn(self.product.id, [row['id'] for row in result])
+            result = self.service.get_filter_options('product', 'no-match-analytics-qa', self.product.id)
+            self.assertEqual([row['id'] for row in result], [self.product.id])
 
     def test_stored_dimensions_and_native_read_group(self):
         service, parsed = self.service._scope(self.filters)
