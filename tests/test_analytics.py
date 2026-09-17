@@ -39,6 +39,7 @@ class TestHexagonosAnalytics(TransactionCase):
         for method, args in [
             ('get_options', []), ('get_dashboard', ['resumen', self.filters]),
             ('get_detail', ['mo_open', self.filters]),
+            ('get_filter_options', ['customer']),
         ]:
             with self.subTest(method=method), self.assertRaises(AccessError):
                 getattr(service, method)(*args)
@@ -70,8 +71,8 @@ class TestHexagonosAnalytics(TransactionCase):
             with self.subTest(tab=tab['key']):
                 payload = service.get_dashboard(tab['key'], self.filters)
                 json.dumps(payload)
-                self.assertTrue(payload['metrics'])
-                for metric in payload['metrics']:
+                self.assertTrue(payload.get('executive') or payload['metrics'])
+                for metric in payload.get('metrics', []):
                     if metric['available']:
                         detail = service.get_detail(metric['key'], self.filters)
                         json.dumps(detail)
@@ -89,10 +90,14 @@ class TestHexagonosAnalytics(TransactionCase):
 
     def test_cost_amounts_require_separate_permission(self):
         service = self.service(self.manager)
-        for tab, key, xmlid in [
-            ('comercial', 'sales_amount', 'control_costos_hexagonos.group_view_sale_total'),
-            ('compras', 'purchase_amount', 'control_costos_hexagonos.group_view_purchase_total'),
-        ]:
+        xmlid = 'control_costos_hexagonos.group_view_sale_total'
+        self.manager.write({'groups_id': [Command.unlink(self.env.ref(xmlid).id)]})
+        payload = service.get_dashboard('comercial', self.filters)
+        self.assertFalse(payload['commercial_available'])
+        self.assertEqual(payload['cards'], [])
+        self.manager.write({'groups_id': [Command.link(self.env.ref(xmlid).id)]})
+        self.assertTrue(service.get_dashboard('comercial', self.filters)['commercial_available'])
+        for tab, key, xmlid in [('compras', 'purchase_amount', 'control_costos_hexagonos.group_view_purchase_total')]:
             self.manager.write({'groups_id': [Command.unlink(self.env.ref(xmlid).id)]})
             panel = next(p for p in service.get_dashboard(tab, self.filters)['panels'] if p['key'] == key)
             self.assertFalse(panel['available'])
@@ -128,9 +133,6 @@ class TestHexagonosAnalytics(TransactionCase):
         })
         service = self.service(self.manager)
         dashboard = service.get_dashboard('produccion', self.filters)
-        metric = next(m for m in dashboard['metrics'] if m['key'] == 'mo_open')
-        self.assertEqual(metric['value'], 0)
+        self.assertEqual(dashboard['production']['status'], [])
         self.assertEqual(service.get_detail('mo_open', self.filters)['rows'], [])
-        for panel in dashboard['panels']:
-            if panel['key'] != 'produced':  # Stock movements have their own ACL/rules.
-                self.assertEqual(panel['rows'], [])
+        self.assertEqual(dashboard['production']['compliance'], [])

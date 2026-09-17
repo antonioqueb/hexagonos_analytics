@@ -301,7 +301,7 @@ class HexagonosAnalytics(models.AbstractModel):
                 value = row.get(field_name, row.get(groupby))
                 label_value = value[1] if isinstance(value, (tuple, list)) else selections.get(value, value)
                 if value in (False, 'none'):
-                    label_value = 'Sin clasificar'
+                    label_value = 'Sin asignar'
                 number = (row.get(measure) or 0) if measure else row['__count']
                 panel['rows'].append({'key': str(index), 'label': str(label_value or 'Sin clasificar'),
                                       'value': number, 'action': self._action(spec, row['__domain'])})
@@ -386,12 +386,12 @@ class HexagonosAnalytics(models.AbstractModel):
         panel['note'] = note if panel['available'] else panel['note']
         return panel
 
-    def _stock_panel(self):
+    def _stock_panel(self, domain_extra=None):
         panel = dict(key='stock_units', label='Existencia y reserva por unidad', scope='actual',
                      rows=[], available=True, unit='',
                      note='Ubicaciones internas, sin inventario de terceros. Libre = existencia − reserva; puede ser negativo. No descuenta retenciones de Calidad ni equivale a material liberado.')
         domain = [('company_id', '=', self.env.company.id), ('location_id.usage', '=', 'internal'),
-                  ('owner_id', '=', False)]
+                  ('owner_id', '=', False)] + (domain_extra or [])
         try:
             model = self.env['stock.quant']
             model.check_access_rights('read')

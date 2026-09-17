@@ -4,58 +4,70 @@
         <div t-if="state.authorized" class="hmx_analytics" t-att-aria-busy="state.loading ? 'true' : 'false'">
             <header class="hmx_hero">
                 <div class="hmx_hero_top">
-                    <div class="hmx_brand">
-                        <img src="/hexagonos_analytics/static/description/icon.svg" alt=""/>
-                        <div><span class="hmx_eyebrow">HEXÁGONOS MEXICANOS · DIRECCIÓN</span>
-                            <h1>Analytics <span>Manufactura</span></h1>
-                            <p>De la demanda a la producción y la entrega.</p>
-                        </div>
+                    <div class="hmx_brand"><img src="/hexagonos_analytics/static/description/icon.svg" alt=""/>
+                        <div><span class="hmx_eyebrow">HEXÁGONOS MEXICANOS</span><h1>Dirección del negocio</h1></div>
                     </div>
                     <div class="hmx_presets" t-if="state.options" aria-label="Período rápido">
-                        <button t-foreach="presets" t-as="preset" t-key="preset.key"
-                                t-att-class="state.preset === preset.key ? 'active' : ''"
-                                t-att-aria-pressed="state.preset === preset.key ? 'true' : 'false'"
-                                t-on-click="() => this.setPreset(preset.key)"><t t-esc="preset.label"/></button>
+                        <button t-foreach="presets" t-as="preset" t-key="preset.key" t-att-class="state.preset === preset.key ? 'active' : ''"
+                            t-att-aria-pressed="state.preset === preset.key ? 'true' : 'false'" t-on-click="() => this.setPreset(preset.key)"><t t-esc="preset.label"/></button>
                     </div>
                 </div>
-                <nav t-if="state.options" class="hmx_tabs" aria-label="Áreas de operación">
-                    <button t-foreach="state.options.tabs" t-as="tab" t-key="tab.key"
-                            t-att-class="state.tab === tab.key ? 'active' : ''"
-                            t-att-aria-current="state.tab === tab.key ? 'page' : undefined"
-                            t-on-click="() => this.load(tab.key)"><t t-esc="tab.label"/></button>
+                <form t-if="state.options" class="hmx_filters" t-on-submit.prevent="() => this.load()">
+                    <label>Desde<input type="date" required="required" t-att-value="state.filters.date_from" t-att-max="state.options.today" t-on-change="ev => this.changeDate('date_from', ev)"/></label>
+                    <label>Hasta<input type="date" required="required" t-att-value="state.filters.date_to" t-att-min="state.filters.date_from" t-att-max="state.options.today" t-on-change="ev => this.changeDate('date_to', ev)"/></label>
+                    <label>Comparar con<select t-att-value="state.filters.comparison" t-on-change="ev => this.changeFilter('comparison', ev)">
+                        <option value="previous_period">Período anterior · igual duración</option><option value="previous_month">Mes anterior · fechas desplazadas</option><option value="previous_year">Mismo período del año anterior</option>
+                    </select></label>
+                    <details class="hmx_dropdown"><summary>Almacenes · <t t-esc="state.filters.warehouse_ids.length || 'Todos'"/></summary>
+                        <div class="hmx_dropdown_body"><p>Venta: comercial · Producción: fabricación · Entrega: despacho</p>
+                            <label><input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(0)" t-on-change="ev => this.toggleWarehouse(0, ev.target.checked)"/> Sin asignar</label>
+                            <label t-foreach="state.options.warehouses" t-as="warehouse" t-key="warehouse.id">
+                                <input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(warehouse.id)" t-on-change="ev => this.toggleWarehouse(warehouse.id, ev.target.checked)"/><t t-esc="warehouse.name"/>
+                            </label><p>Sin selección = consolidado, incluyendo Sin asignar.</p>
+                        </div>
+                    </details>
+                    <details class="hmx_dropdown hmx_more"><summary>Filtros adicionales</summary><div class="hmx_dropdown_body">
+                        <div t-foreach="filterCatalogs" t-as="catalog" t-key="catalog.key" class="hmx_catalog">
+                            <label><t t-esc="catalog.label"/><input type="search" placeholder="Buscar en catálogo y pulsar Tab" t-att-aria-label="'Buscar ' + catalog.label" t-on-change="ev => this.searchCatalog(catalog.key, ev.target.value)"/>
+                                <select t-att-value="state.filters[catalog.key + '_id']" t-on-change="ev => this.changeFilter(catalog.key + '_id', ev)"><option value="0">Todos</option>
+                                    <option t-foreach="state.options[catalog.key + 's']" t-as="option" t-key="option.id" t-att-value="option.id"><t t-esc="option.name"/></option>
+                                </select>
+                            </label>
+                        </div>
+                        <p>Hasta 50 coincidencias por búsqueda. Catálogos sujetos a tus permisos.</p>
+                        <label>Moneda · importes comerciales<select t-att-value="state.filters.currency_id" t-on-change="ev => this.changeFilter('currency_id', ev)">
+                            <option t-foreach="state.options.currencies" t-as="currency" t-key="currency.id" t-att-value="currency.id"><t t-esc="currency.name"/></option>
+                        </select></label>
+                        <label>Inactividad mínima (días)<input type="number" min="7" max="730" t-att-value="state.filters.inactivity_days" t-on-change="ev => this.changeFilter('inactivity_days', ev)"/></label>
+                        <label>Multiplicador de frecuencia habitual<input type="number" min="1" max="6" step="0.5" t-att-value="state.filters.cadence_factor" t-on-change="ev => this.changeFilter('cadence_factor', ev)"/></label>
+                    </div></details>
+                    <button type="submit" class="hmx_primary" t-att-disabled="state.loading">Actualizar</button>
+                    <button type="button" class="hmx_reset" t-on-click="clearFilters">Limpiar dimensiones</button>
+                </form>
+                <div class="hmx_chips" aria-label="Filtros activos"><span t-foreach="activeFilters" t-as="chip" t-key="chip"><t t-esc="chip"/></span>
+                    <span t-if="state.options">Moneda: <t t-esc="state.options.currencies.find(c => c.id === state.filters.currency_id)?.name"/></span>
+                    <span class="hmx_updated" t-if="state.data">Actualizado <t t-esc="state.data.updated_at"/> · Monterrey</span>
+                </div>
+                <nav t-if="state.options" class="hmx_tabs" aria-label="Vistas del negocio">
+                    <button t-foreach="state.options.tabs" t-as="tab" t-key="tab.key" t-att-class="state.tab === tab.key ? 'active' : ''"
+                        t-att-aria-current="state.tab === tab.key ? 'page' : undefined" t-on-click="() => this.load(tab.key)"><t t-esc="tab.label"/></button>
                 </nav>
             </header>
-
-            <form t-if="state.options" class="hmx_filters" t-on-submit.prevent="() => this.load()">
-                <label>Compañía
-                    <select t-att-value="state.filters.company_id" t-on-change="changeCompany">
-                        <option t-foreach="state.options.companies" t-as="company" t-key="company.id"
-                                t-att-value="company.id"><t t-esc="company.name"/></option>
-                    </select>
-                </label>
-                <label>Desde <input type="date" required="required" t-att-value="state.filters.date_from"
-                        t-att-max="state.options.today" t-on-change="(ev) => this.changeDate('date_from', ev)"/></label>
-                <label>Hasta <input type="date" required="required" t-att-value="state.filters.date_to"
-                        t-att-max="state.options.today" t-att-min="state.filters.date_from"
-                        t-on-change="(ev) => this.changeDate('date_to', ev)"/></label>
-                <button type="submit" class="hmx_primary" t-att-disabled="state.loading">
-                    <i class="fa fa-refresh me-1" aria-hidden="true"/> Actualizar
-                </button>
-                <span class="hmx_updated" t-if="state.data">Actualizado <t t-esc="state.data.updated_at"/> · Monterrey</span>
-            </form>
 
             <main class="hmx_body">
                 <div class="hmx_context">
                     <i class="fa fa-info-circle" aria-hidden="true"/>
                     <span>Los resultados del período se separan de los pendientes y existencias actuales.
-                        Solo se incluyen registros que puedes consultar en la compañía seleccionada.</span>
+                        Solo se incluyen registros visibles de la compañía activa. Cliente y vendedor no filtran producción.</span>
                 </div>
                 <div t-if="state.error" class="alert alert-danger" role="alert"><t t-esc="state.error"/></div>
                 <div t-if="state.loading" class="hmx_loading" role="status">
                     <i class="fa fa-circle-o-notch fa-spin" aria-hidden="true"/> Consultando la operación…
                 </div>
                 <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Selecciona Actualizar para aplicar las fechas.</div>
-                <t t-if="state.data">
+                <t t-if="state.data and state.data.executive"><t t-call="hexagonos_analytics.Executive"/></t>
+                <t t-if="state.data and !state.data.executive">
+                    <p class="hmx_context" t-if="state.data.scope_note" t-esc="state.data.scope_note"/>
                     <div class="hmx_section_heading">
                         <div><h2><t t-esc="state.options.tabs.find(t => t.key === state.tab).label"/></h2>
                             <p><t t-esc="state.data.company"/> · <t t-esc="state.data.period"/></p>
@@ -104,7 +116,7 @@
                         <strong>Lectura de dirección</strong>
                         <p>Una cifra en cero significa que no hay registros visibles que cumplan el criterio. “Sin base” indica que no existen registros evaluables para calcular el porcentaje.</p>
                         <p>Las plantas de Calidad y Compras son clasificaciones propias; los almacenes de Ventas y los tipos de operación de Producción conservan su significado. No se igualan automáticamente con las plantas de Asistencia.</p>
-                        <p>El tablero no calcula cobranza, pagos, utilidad, OEE ni OTIF: requieren fuentes y mediciones que aún no forman parte de este alcance.</p>
+                        <p>Las vistas ejecutivas separan ventas, facturación y cobros registrados. No se calcula utilidad, OEE ni OTIF sin bases verificadas.</p>
                     </aside>
                 </t>
             </main>
