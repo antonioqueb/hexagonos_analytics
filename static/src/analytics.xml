@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+    <t t-name="hexagonos_analytics.Dashboard">
+        <div t-if="state.authorized" class="hmx_analytics" t-att-aria-busy="state.loading ? 'true' : 'false'">
+            <header class="hmx_hero">
+                <div class="hmx_hero_top">
+                    <div class="hmx_brand">
+                        <img src="/hexagonos_analytics/static/description/icon.svg" alt=""/>
+                        <div><span class="hmx_eyebrow">HEXÁGONOS MEXICANOS · DIRECCIÓN</span>
+                            <h1>Analytics <span>Manufactura</span></h1>
+                            <p>De la demanda a la producción y la entrega.</p>
+                        </div>
+                    </div>
+                    <div class="hmx_presets" t-if="state.options" aria-label="Período rápido">
+                        <button t-foreach="presets" t-as="preset" t-key="preset.key"
+                                t-att-class="state.preset === preset.key ? 'active' : ''"
+                                t-att-aria-pressed="state.preset === preset.key ? 'true' : 'false'"
+                                t-on-click="() => this.setPreset(preset.key)"><t t-esc="preset.label"/></button>
+                    </div>
+                </div>
+                <nav t-if="state.options" class="hmx_tabs" aria-label="Áreas de operación">
+                    <button t-foreach="state.options.tabs" t-as="tab" t-key="tab.key"
+                            t-att-class="state.tab === tab.key ? 'active' : ''"
+                            t-att-aria-current="state.tab === tab.key ? 'page' : undefined"
+                            t-on-click="() => this.load(tab.key)"><t t-esc="tab.label"/></button>
+                </nav>
+            </header>
+
+            <form t-if="state.options" class="hmx_filters" t-on-submit.prevent="() => this.load()">
+                <label>Compañía
+                    <select t-att-value="state.filters.company_id" t-on-change="changeCompany">
+                        <option t-foreach="state.options.companies" t-as="company" t-key="company.id"
+                                t-att-value="company.id"><t t-esc="company.name"/></option>
+                    </select>
+                </label>
+                <label>Desde <input type="date" required="required" t-att-value="state.filters.date_from"
+                        t-att-max="state.options.today" t-on-change="(ev) => this.changeDate('date_from', ev)"/></label>
+                <label>Hasta <input type="date" required="required" t-att-value="state.filters.date_to"
+                        t-att-max="state.options.today" t-att-min="state.filters.date_from"
+                        t-on-change="(ev) => this.changeDate('date_to', ev)"/></label>
+                <button type="submit" class="hmx_primary" t-att-disabled="state.loading">
+                    <i class="fa fa-refresh me-1" aria-hidden="true"/> Actualizar
+                </button>
+                <span class="hmx_updated" t-if="state.data">Actualizado <t t-esc="state.data.updated_at"/> · Monterrey</span>
+            </form>
+
+            <main class="hmx_body">
+                <div class="hmx_context">
+                    <i class="fa fa-info-circle" aria-hidden="true"/>
+                    <span>Los resultados del período se separan de los pendientes y existencias actuales.
+                        Solo se incluyen registros que puedes consultar en la compañía seleccionada.</span>
+                </div>
+                <div t-if="state.error" class="alert alert-danger" role="alert"><t t-esc="state.error"/></div>
+                <div t-if="state.loading" class="hmx_loading" role="status">
+                    <i class="fa fa-circle-o-notch fa-spin" aria-hidden="true"/> Consultando la operación…
+                </div>
+                <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Selecciona Actualizar para aplicar las fechas.</div>
+                <t t-if="state.data">
+                    <div class="hmx_section_heading">
+                        <div><h2><t t-esc="state.options.tabs.find(t => t.key === state.tab).label"/></h2>
+                            <p><t t-esc="state.data.company"/> · <t t-esc="state.data.period"/></p>
+                        </div>
+                        <span t-if="state.detailLoading" role="status">Cargando detalle…</span>
+                        <span t-else="">Selecciona un indicador para revisar su cálculo y sus registros.</span>
+                    </div>
+                    <div class="hmx_metrics">
+                        <button t-foreach="state.data.metrics" t-as="metric" t-key="metric.key"
+                                t-attf-class="hmx_metric #{metric.tone} #{!metric.available ? 'unavailable' : ''}"
+                                t-att-disabled="!metric.available or state.detailLoading"
+                                t-att-title="metric.definition" t-on-click="() => this.showDetail(metric)">
+                            <span t-attf-class="hmx_scope #{metric.scope}"><t t-esc="scopeLabel(metric.scope)"/></span>
+                            <span class="hmx_metric_label"><t t-esc="metric.label"/></span>
+                            <strong t-if="metric.available"><t t-esc="number(metric.value)"/><small t-if="metric.value !== null and metric.unit"> <t t-esc="metric.unit"/></small></strong>
+                            <strong t-else="" class="hmx_restricted">Sin acceso</strong>
+                            <span t-if="metric.sample !== null" class="hmx_metric_hint"><t t-esc="metric.numerator"/> de <t t-esc="metric.sample"/> registros evaluables</span>
+                            <span t-elif="!metric.available" class="hmx_metric_hint"><t t-esc="metric.reason"/></span>
+                            <span t-else="" class="hmx_metric_hint">Ver definición y registros <span aria-hidden="true">↗</span></span>
+                        </button>
+                    </div>
+                    <div class="hmx_panels">
+                        <section t-foreach="state.data.panels" t-as="panel" t-key="panel.key" class="hmx_panel">
+                            <div class="hmx_panel_heading"><h3><t t-esc="panel.label"/></h3><span t-attf-class="hmx_scope #{panel.scope}"><t t-esc="scopeLabel(panel.scope)"/></span></div>
+                            <p class="hmx_panel_note"><t t-esc="panel.note"/></p>
+                            <div t-if="!panel.available" class="hmx_empty"><i class="fa fa-lock" aria-hidden="true"/> Información restringida</div>
+                            <div t-elif="!panel.rows.length" class="hmx_empty">Sin registros para este alcance.</div>
+                            <div t-elif="panel.key === 'stock_units'" class="hmx_table_scroll">
+                                <table class="table hmx_table"><thead><tr><th>Unidad</th><th>Existencia</th><th>Reserva</th><th>Libre</th></tr></thead>
+                                    <tbody><tr t-foreach="panel.rows" t-as="row" t-key="row.key">
+                                        <td><button class="hmx_link" t-on-click="() => this.openAction(row.action)"><t t-esc="row.label"/></button></td>
+                                        <td><t t-esc="number(row.value)"/></td><td><t t-esc="number(row.reserved)"/></td><td><t t-esc="number(row.free)"/></td>
+                                    </tr></tbody>
+                                </table>
+                            </div>
+                            <div t-else="" class="hmx_bars">
+                                <button t-foreach="panel.rows" t-as="row" t-key="row.key" class="hmx_bar_row"
+                                        t-on-click="() => this.openAction(row.action)">
+                                    <span class="hmx_bar_label"><span><t t-esc="row.label"/></span><b><t t-esc="number(row.value)"/></b></span>
+                                    <span t-if="!panel.unit" class="hmx_bar_track"><span t-att-style="'width:' + barWidth(row, panel)"/></span>
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+                    <aside class="hmx_method">
+                        <strong>Lectura de dirección</strong>
+                        <p>Una cifra en cero significa que no hay registros visibles que cumplan el criterio. “Sin base” indica que no existen registros evaluables para calcular el porcentaje.</p>
+                        <p>Las plantas de Calidad y Compras son clasificaciones propias; los almacenes de Ventas y los tipos de operación de Producción conservan su significado. No se igualan automáticamente con las plantas de Asistencia.</p>
+                        <p>El tablero no calcula cobranza, pagos, utilidad, OEE ni OTIF: requieren fuentes y mediciones que aún no forman parte de este alcance.</p>
+                    </aside>
+                </t>
+            </main>
+        </div>
+    </t>
+
+    <t t-name="hexagonos_analytics.Detail">
+        <Dialog title="props.detail.metric.label" size="'lg'">
+            <div class="hmx_detail">
+                <span class="hmx_scope"><t t-esc="props.detail.metric.scope === 'periodo' ? 'Período seleccionado' : 'Situación actual'"/></span>
+                <h3 class="mt-3"><t t-esc="number(props.detail.metric.value)"/><t t-if="props.detail.metric.value !== null"> <t t-esc="props.detail.metric.unit"/></t></h3>
+                <p t-if="props.detail.metric.sample !== null"><t t-esc="props.detail.metric.numerator"/> de <t t-esc="props.detail.metric.sample"/> registros evaluables.</p>
+                <p><t t-esc="props.detail.metric.definition"/></p>
+                <p class="text-muted"><t t-esc="props.detail.detail_note"/> Vista previa de hasta 20 registros, ordenados por fecha ascendente. Total: <t t-esc="props.detail.total"/>.</p>
+                <div class="table-responsive"><table class="table table-hover">
+                    <thead><tr><th>Registro</th><th><t t-esc="props.detail.date_label"/></th><th>Estado</th></tr></thead>
+                    <tbody><tr t-foreach="props.detail.rows" t-as="row" t-key="row.id">
+                        <td><button class="btn btn-link p-0 text-start" t-on-click="() => { props.openRecord(row.id); props.close(); }"><t t-esc="row.name"/></button></td>
+                        <td><t t-esc="row.date"/></td><td><t t-esc="row.state"/></td>
+                    </tr><tr t-if="!props.detail.rows.length"><td colspan="3" class="text-muted">Sin registros para este alcance.</td></tr></tbody>
+                </table></div>
+            </div>
+            <t t-set-slot="footer">
+                <button class="btn btn-primary" t-on-click="() => { props.openAction(props.detail.action); props.close(); }">Abrir todos los registros</button>
+                <button class="btn btn-secondary" t-on-click="props.close">Cerrar</button>
+            </t>
+        </Dialog>
+    </t>
+</templates>

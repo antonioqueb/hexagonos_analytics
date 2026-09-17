@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_category_analytics" model="ir.module.category">
+        <field name="name">Analytics Hexágonos</field>
+        <field name="sequence">31</field>
+    </record>
+    <record id="group_analytics_viewer" model="res.groups">
+        <field name="name">Consultar tablero de dirección</field>
+        <field name="category_id" ref="module_category_analytics"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        <field name="comment">Consulta los indicadores de los registros que ya puede leer. No concede permisos operativos ni acceso a importes restringidos.</field>
+    </record>
+</odoo>
