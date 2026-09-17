@@ -8,7 +8,7 @@ const source=['charts.js','analytics.js'].map(f=>fs.readFileSync(path.join(addon
 const html=`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body,#mount{height:100%;margin:0}*{box-sizing:border-box}button,input,select{font:inherit}h1,h2,h3,p{margin-top:0}</style><link rel="stylesheet" href="analytics.css"></head><body><main id="mount"></main>
 <script src="node_modules/@odoo/owl/dist/owl.iife.js"></script><script src="node_modules/chart.js/dist/chart.umd.js"></script><script>
 const fixtures=${fs.readFileSync(path.join(qa,'fixtures.json'),'utf8')};
-const {Component,onWillStart,onWillUnmount,useState,useEffect,useRef}=owl;
+const {Component,onWillStart,onWillUnmount,useState,useEffect,useRef,useExternalListener}=owl;
 const useService=name=>services[name];const user={userId:100};const loadBundle=async()=>{};
 const registry={category:()=>({add:(key,value)=>window.Dashboard=value})};
 class Dialog extends Component{static props=['*'];static template=owl.xml\`<div><t t-slot="default"/></div>\`;}
@@ -27,9 +27,18 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.goto('file://'+path.join(qa,'preview.html'));await page.waitForSelector('.hmx_exec_metrics');
+ async function navigate(label){
+  const mobile=page.getByRole('combobox',{name:'Vista del negocio',exact:true});
+  if(await mobile.isVisible()){await mobile.selectOption({label});return;}
+  const button=page.getByRole('button',{name:label,exact:true,includeHidden:true});
+  if(!await button.isVisible())await page.locator('.hmx_nav_group').filter({has:button}).locator('summary').click();
+  await button.click();
+ }
  await page.waitForFunction(()=>Object.keys(Chart.instances).length===8);
  assert.deepEqual(errors,[]);
  assert.equal(await page.locator('canvas').count(),8);
+ assert.equal(await page.locator('select[name=currency_id]').inputValue(),'1');
+ assert.ok((await page.locator('.hmx_hero').boundingBox()).height<230);
  await page.screenshot({path:path.join(qa,'desktop.png')});
  // Text color contrast, actual computed styles, including dropdown and hover states.
  async function contrast(){return page.evaluate(()=>{
@@ -46,18 +55,33 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
   }return failures;
  });}
  assert.deepEqual(await contrast(),[]);
- await page.getByText('Filtros adicionales',{exact:true}).click();
+ await page.locator('.hmx_more > summary').click();
  assert.deepEqual(await contrast(),[]);
- await page.getByText('Filtros adicionales',{exact:true}).click();
- for(const text of ['Actualizar','Este mes','Productos y familias']){await page.getByRole('button',{name:text,exact:true}).hover();assert.deepEqual(await contrast(),[]);}
- await page.getByRole('button',{name:'Clientes',exact:true}).click();await page.waitForSelector('.hmx_heatmap');
+ await page.getByRole('button',{name:'Cerrar filtros',exact:true}).click();
+ await page.locator('.hmx_period > summary').click();
+ await page.getByRole('button',{name:'Este mes',exact:true}).hover();assert.deepEqual(await contrast(),[]);
+ await page.screenshot({path:path.join(qa,'header-period.png')});
+ await page.locator('input[name=date_from]').focus();await page.keyboard.press('Escape');
+ assert.ok(await page.locator('.hmx_period > summary').evaluate(el=>el===document.activeElement));
+ assert.equal(await page.locator('.hmx_hero details[open]').count(),0);
+ await page.locator('.hmx_warehouses > summary').click();
+ await page.getByRole('checkbox',{name:'Almacén 2',exact:true}).check();
+ await page.getByRole('button',{name:'Aplicar cambios',exact:true}).click();await page.waitForSelector('.hmx_exec_metrics');
+ assert.equal(await page.locator('.hmx_filter_chip').count(),1);
+ assert.deepEqual(await contrast(),[]);
+ await page.getByRole('button',{name:'Quitar Almacén 2',exact:true}).click();
+ await page.waitForFunction(()=>window.component.state.filters.warehouse_ids.length===0 && document.querySelectorAll('.hmx_filter_chip').length===0);
+ await page.waitForSelector('.hmx_exec_metrics');
+ assert.equal(await page.locator('.hmx_filter_chip').count(),0);
+ for(const text of ['Actualizar','Productos y familias']){await page.getByRole('button',{name:text,exact:true}).hover();assert.deepEqual(await contrast(),[]);}
+ await navigate('Clientes');await page.waitForSelector('.hmx_heatmap');
  assert.deepEqual(await contrast(),[]);
  await page.locator('.hmx_heatmap').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'customers.png')});
- await page.getByRole('button',{name:'Producción por almacén',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('canvas').length===1);
+ await navigate('Producción por almacén');await page.waitForFunction(()=>document.querySelectorAll('canvas').length===1);
  assert.deepEqual(errors,[]);assert.deepEqual(await contrast(),[]);
  // Every operational panel is rendered through Chart.js, including currency/UOM splits.
  for(const [tab,count] of [['Calidad',4],['Entregas',4],['Abastecimiento',6],['Inventario',5],['Evidencias',1],['Asistencia',3]]){
-  await page.getByRole('button',{name:tab,exact:true}).click();
+  await navigate(tab);
   await page.waitForFunction(n=>Object.keys(Chart.instances).length===n,count);
   assert.equal(await page.locator('.hmx_bars').count(),0);
   assert.deepEqual(await contrast(),[]);assert.deepEqual(errors,[]);
@@ -68,7 +92,7 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
   const chart=Object.values(await page.evaluate(()=>Object.values(Chart.instances).map(c=>({unit:c.config.options.scales.x?.title?.text,type:c.config.type}))));
   assert.ok(chart.length);
  }
- await page.getByRole('button',{name:'Entregas',exact:true}).click();await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
+ await navigate('Entregas');await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
  const tooltipCheck=await page.evaluate(()=>{
   const c=Object.values(Chart.instances).find(chart=>chart.canvas.closest('.hmx_panel').querySelector('h3').textContent==='Líneas vencidas por cliente');const point=c.getDatasetMeta(0).data[0];
   c.tooltip.setActiveElements([{datasetIndex:0,index:0}],{x:point.x,y:point.y});c.update();
@@ -79,7 +103,7 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  assert.ok(tooltipCheck.title.join('').includes('NOMBRE COMERCIAL'));
  assert.ok(tooltipCheck.tooltipRight<=tooltipCheck.width+1);
  assert.equal(tooltipCheck.action.res_model,'sale.order.line');
- await page.getByRole('button',{name:'Resumen ejecutivo',exact:true}).click();await page.waitForSelector('.hmx_exec_metrics');
+ await navigate('Resumen ejecutivo');await page.waitForSelector('.hmx_exec_metrics');
  await page.locator('select[name=currency_id]').selectOption('0');
  await page.waitForFunction(()=>document.querySelectorAll('.hmx_currency_block').length===2);
  assert.equal(await page.locator('.hmx_exec_metrics article').count(),6);
@@ -88,12 +112,21 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);await page.screenshot({path:path.join(qa,'mixed.png')});
  for(const width of [390,768]){
   await page.setViewportSize({width,height:900});
-  await page.getByRole('button',{name:'Resumen ejecutivo',exact:true}).click();await page.waitForSelector('.hmx_exec_metrics');
+  await navigate('Resumen ejecutivo');await page.waitForSelector('.hmx_exec_metrics');
+  assert.equal(await page.getByRole('combobox',{name:'Vista del negocio',exact:true}).inputValue(),'resumen');
   assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
   assert.deepEqual(await contrast(),[]);
   await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(qa,`screen-${width}.png`)});
-  await page.getByRole('button',{name:'Entregas',exact:true}).click();await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
+  for(const [menu,close] of [['period','Cerrar período'],['warehouses','Cerrar almacenes'],['more','Cerrar filtros']]){
+   await page.locator(`.hmx_${menu} > summary`).click();
+   const box=await page.locator(`.hmx_${menu} > .hmx_dropdown_body`).boundingBox();
+   assert.ok(box.x>=0 && box.x+box.width<=width && box.y+box.height<=900);
+   assert.deepEqual(await contrast(),[]);
+   await page.getByRole('button',{name:close,exact:true}).click();
+  }
+  await navigate('Entregas');await page.waitForFunction(()=>Object.keys(Chart.instances).length===4);
+  assert.equal(await page.getByRole('combobox',{name:'Vista del negocio',exact:true}).inputValue(),'entregas');
   assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
   await page.locator('.hmx_panels').first().scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,`operational-${width}.png`)});
  }

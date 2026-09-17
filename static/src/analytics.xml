@@ -2,56 +2,79 @@
 <templates xml:space="preserve">
     <t t-name="hexagonos_analytics.Dashboard">
         <div t-if="state.authorized" class="hmx_analytics" t-att-aria-busy="state.loading ? 'true' : 'false'">
-            <header class="hmx_hero">
-                <div class="hmx_hero_top">
-                    <div class="hmx_brand"><img src="/hexagonos_analytics/static/description/icon.svg" alt=""/>
-                        <div><span class="hmx_eyebrow">HEXÁGONOS MEXICANOS</span><h1>Dirección del negocio</h1></div>
-                    </div>
-                    <div class="hmx_presets" t-if="state.options" aria-label="Período rápido">
-                        <button t-foreach="presets" t-as="preset" t-key="preset.key" t-att-class="state.preset === preset.key ? 'active' : ''"
-                            t-att-aria-pressed="state.preset === preset.key ? 'true' : 'false'" t-on-click="() => this.setPreset(preset.key)"><t t-esc="preset.label"/></button>
-                    </div>
-                </div>
-                <form t-if="state.options" class="hmx_filters" t-on-submit.prevent="() => this.load()">
-                    <label>Desde<input type="date" required="required" t-att-value="state.filters.date_from" t-att-max="state.options.today" t-on-change="ev => this.changeDate('date_from', ev)"/></label>
-                    <label>Hasta<input type="date" required="required" t-att-value="state.filters.date_to" t-att-min="state.filters.date_from" t-att-max="state.options.today" t-on-change="ev => this.changeDate('date_to', ev)"/></label>
-                    <label>Comparar con<select t-att-value="state.filters.comparison" t-on-change="ev => this.changeFilter('comparison', ev)">
-                        <option value="previous_period">Período anterior · igual duración</option><option value="previous_month">Mes anterior · fechas desplazadas</option><option value="previous_year">Mismo período del año anterior</option>
-                    </select></label>
-                    <label>Divisa · ventas y compras<select name="currency_id" t-att-value="state.filters.currency_id" t-on-change="changeCurrency">
-                        <option value="0">Mixto · divisas separadas</option>
-                        <option t-foreach="state.options.currencies" t-as="currency" t-key="currency.id" t-att-value="currency.id"><t t-esc="currency.name"/></option>
-                    </select></label>
-                    <details class="hmx_dropdown"><summary>Almacenes · <t t-esc="state.filters.warehouse_ids.length || 'Todos'"/></summary>
-                        <div class="hmx_dropdown_body"><p>Venta: comercial · Producción: fabricación · Entrega: despacho</p>
-                            <label><input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(0)" t-on-change="ev => this.toggleWarehouse(0, ev.target.checked)"/> Sin asignar</label>
-                            <label t-foreach="state.options.warehouses" t-as="warehouse" t-key="warehouse.id">
-                                <input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(warehouse.id)" t-on-change="ev => this.toggleWarehouse(warehouse.id, ev.target.checked)"/><t t-esc="warehouse.name"/>
-                            </label><p>Sin selección = consolidado, incluyendo Sin asignar.</p>
+            <header class="hmx_hero" t-ref="header" t-on-keydown="onHeaderKeydown">
+                <form t-if="state.options" class="hmx_header_form" t-on-submit.prevent="() => this.load()">
+                    <div class="hmx_hero_top">
+                        <div class="hmx_brand"><img src="/hexagonos_analytics/static/description/icon.svg" alt=""/>
+                            <div><span class="hmx_eyebrow">Hexágonos Mexicanos</span><h1>Panel ejecutivo</h1></div>
                         </div>
-                    </details>
-                    <details class="hmx_dropdown hmx_more"><summary>Filtros adicionales</summary><div class="hmx_dropdown_body">
-                        <div t-foreach="filterCatalogs" t-as="catalog" t-key="catalog.key" class="hmx_catalog">
-                            <label><t t-esc="catalog.label"/><input type="search" placeholder="Buscar en catálogo y pulsar Tab" t-att-aria-label="'Buscar ' + catalog.label" t-on-change="ev => this.searchCatalog(catalog.key, ev.target.value)"/>
-                                <select t-att-value="state.filters[catalog.key + '_id']" t-on-change="ev => this.changeFilter(catalog.key + '_id', ev)"><option value="0">Todos</option>
-                                    <option t-foreach="state.options[catalog.key + 's']" t-as="option" t-key="option.id" t-att-value="option.id"><t t-esc="option.name"/></option>
-                                </select>
-                            </label>
+                        <div class="hmx_header_actions">
+                            <span t-attf-class="hmx_freshness #{state.pending ? 'pending' : ''} #{state.error ? 'failed' : ''}" role="status"
+                                  t-att-title="state.updatedAt ? 'Última actualización: ' + state.updatedAt + ' · Monterrey' : 'Hora de Monterrey'">
+                                <span class="hmx_status_dot" aria-hidden="true"/><t t-esc="updateLabel"/>
+                            </span>
+                            <button type="submit" class="hmx_primary" t-att-disabled="state.loading">
+                                <svg t-if="!state.pending" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.7-1L20 9M4 15l2.2 3A7 7 0 0 0 18 17"/></svg>
+                                <t t-esc="state.pending ? 'Aplicar cambios' : 'Actualizar'"/>
+                            </button>
                         </div>
-                        <p>Hasta 50 coincidencias por búsqueda. Catálogos sujetos a tus permisos.</p>
-                        <label>Inactividad mínima (días)<input type="number" min="7" max="730" t-att-value="state.filters.inactivity_days" t-on-change="ev => this.changeFilter('inactivity_days', ev)"/></label>
-                        <label>Multiplicador de frecuencia habitual<input type="number" min="1" max="6" step="0.5" t-att-value="state.filters.cadence_factor" t-on-change="ev => this.changeFilter('cadence_factor', ev)"/></label>
-                    </div></details>
-                    <button type="submit" class="hmx_primary" t-att-disabled="state.loading">Actualizar</button>
-                    <button type="button" class="hmx_reset" t-on-click="clearFilters">Limpiar dimensiones</button>
+                    </div>
+                    <div class="hmx_filters">
+                        <details class="hmx_dropdown hmx_period" t-on-toggle="onMenuToggle">
+                            <summary class="hmx_field_control"><span class="hmx_field_label">Período</span><span class="hmx_field_value" t-esc="periodLabel"/></summary>
+                            <div class="hmx_dropdown_body hmx_period_body"><div class="hmx_popover_heading"><h3>Período de consulta</h3><button type="button" class="hmx_close" aria-label="Cerrar período" t-on-click="() => this.closeHeaderMenus()">×</button></div>
+                                <div class="hmx_presets" aria-label="Períodos rápidos"><button type="button" t-foreach="presets" t-as="preset" t-key="preset.key"
+                                    t-att-class="selectedPreset === preset.key ? 'active' : ''" t-att-aria-pressed="selectedPreset === preset.key ? 'true' : 'false'"
+                                    t-on-click="() => this.setPreset(preset.key)"><t t-esc="preset.label"/></button></div>
+                                <div class="hmx_date_fields"><label>Desde<input type="date" name="date_from" required="required" t-att-value="state.filters.date_from" t-att-max="state.options.today" t-on-invalid="onInvalidField" t-on-change="ev => this.changeDate('date_from', ev)"/></label>
+                                    <label>Hasta<input type="date" name="date_to" required="required" t-att-value="state.filters.date_to" t-att-min="state.filters.date_from" t-att-max="state.options.today" t-on-invalid="onInvalidField" t-on-change="ev => this.changeDate('date_to', ev)"/></label></div>
+                                <p>Elige un acceso rápido o ajusta las fechas y pulsa Aplicar cambios.</p>
+                            </div>
+                        </details>
+                        <label class="hmx_field_control hmx_comparison"><span class="hmx_field_label">Comparar con</span><select name="comparison" t-att-value="state.filters.comparison" t-on-change="ev => this.changeFilter('comparison', ev)">
+                            <option value="previous_period" t-att-selected="state.filters.comparison === 'previous_period'">Período anterior</option><option value="previous_month" t-att-selected="state.filters.comparison === 'previous_month'">Mes anterior</option><option value="previous_year" t-att-selected="state.filters.comparison === 'previous_year'">Año anterior</option>
+                        </select></label>
+                        <label class="hmx_field_control hmx_currency"><span class="hmx_field_label">Divisa</span><select name="currency_id" t-att-value="state.filters.currency_id" t-on-change="changeCurrency" title="Ventas y compras. Mixto mantiene las divisas separadas.">
+                            <option value="0" t-att-selected="state.filters.currency_id === 0">Mixto</option><option t-foreach="state.options.currencies" t-as="currency" t-key="currency.id" t-att-value="currency.id" t-att-selected="state.filters.currency_id === currency.id"><t t-esc="currency.name"/></option>
+                        </select></label>
+                        <details class="hmx_dropdown hmx_warehouses" t-on-toggle="onMenuToggle">
+                            <summary class="hmx_field_control" t-att-title="warehouseLabel"><span class="hmx_field_label">Almacenes</span><span class="hmx_field_value" t-esc="warehouseLabel"/></summary>
+                            <div class="hmx_dropdown_body"><div class="hmx_popover_heading"><h3>Almacenes</h3><button type="button" class="hmx_close" aria-label="Cerrar almacenes" t-on-click="() => this.closeHeaderMenus()">×</button></div>
+                                <p>Venta: almacén comercial. Producción: fabricación. Entrega: despacho.</p>
+                                <label><input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(0)" t-on-change="ev => this.toggleWarehouse(0, ev.target.checked)"/> Sin asignar</label>
+                                <label t-foreach="state.options.warehouses" t-as="warehouse" t-key="warehouse.id"><input type="checkbox" t-att-checked="state.filters.warehouse_ids.includes(warehouse.id)" t-on-change="ev => this.toggleWarehouse(warehouse.id, ev.target.checked)"/><t t-esc="warehouse.name"/></label>
+                                <p>Sin selección se consulta el consolidado, incluido Sin asignar.</p>
+                            </div>
+                        </details>
+                        <details class="hmx_dropdown hmx_more" t-on-toggle="onMenuToggle">
+                            <summary class="hmx_more_trigger" aria-label="Filtros adicionales"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="white"/><circle cx="15" cy="17" r="2" fill="white"/></svg>Filtros<span t-if="filterCount" class="hmx_filter_count" t-esc="filterCount"/></summary>
+                            <div class="hmx_dropdown_body"><div class="hmx_popover_heading"><h3>Filtros adicionales</h3><button type="button" class="hmx_close" aria-label="Cerrar filtros" t-on-click="() => this.closeHeaderMenus()">×</button></div>
+                                <div t-foreach="filterCatalogs" t-as="catalog" t-key="catalog.key" class="hmx_catalog"><label><t t-esc="catalog.label"/>
+                                    <input type="search" placeholder="Buscar…" t-att-aria-label="'Buscar ' + catalog.label" t-on-change="ev => this.searchCatalog(catalog.key, ev.target.value)"/>
+                                    <select t-att-value="state.filters[catalog.key + '_id']" t-on-change="ev => this.changeFilter(catalog.key + '_id', ev)"><option value="0" t-att-selected="!state.filters[catalog.key + '_id']">Todos</option><option t-foreach="state.options[catalog.key + 's']" t-as="option" t-key="option.id" t-att-value="option.id" t-att-selected="state.filters[catalog.key + '_id'] === option.id"><t t-esc="option.name"/></option></select>
+                                </label></div>
+                                <p>Hasta 50 coincidencias. Los filtros de cliente y vendedor aplican al análisis comercial.</p>
+                                <div class="hmx_popover_heading"><h3>Seguimiento de clientes</h3></div>
+                                <label>Inactividad mínima (días)<input type="number" min="7" max="730" t-att-value="state.filters.inactivity_days" t-on-invalid="onInvalidField" t-on-change="ev => this.changeFilter('inactivity_days', ev)"/></label>
+                                <label>Multiplicador de frecuencia<input type="number" min="1" max="6" step="0.5" t-att-value="state.filters.cadence_factor" t-on-invalid="onInvalidField" t-on-change="ev => this.changeFilter('cadence_factor', ev)"/></label>
+                            </div>
+                        </details>
+                    </div>
+                    <div t-if="activeFilters.length" class="hmx_chips" aria-label="Filtros activos"><span class="hmx_chips_label" t-esc="state.pending ? 'Por aplicar' : 'Filtros activos'"/>
+                        <button type="button" class="hmx_filter_chip" t-foreach="activeFilters" t-as="chip" t-key="chip.key" t-att-title="chip.label" t-att-aria-label="'Quitar ' + chip.label" t-on-click="() => this.removeFilter(chip)"><span t-esc="chip.label"/><span aria-hidden="true">×</span></button>
+                        <button type="button" class="hmx_clear" t-on-click="clearFilters">Restablecer filtros</button>
+                    </div>
                 </form>
-                <div class="hmx_chips" aria-label="Filtros activos"><span t-foreach="activeFilters" t-as="chip" t-key="chip"><t t-esc="chip"/></span>
-                    <span t-if="state.options">Divisa: <t t-esc="state.filters.currency_id === 0 ? 'Mixto · sin conversión' : state.options.currencies.find(c => c.id === state.filters.currency_id)?.name"/></span>
-                    <span class="hmx_updated" t-if="state.data">Actualizado <t t-esc="state.data.updated_at"/> · Monterrey</span>
-                </div>
-                <nav t-if="state.options" class="hmx_tabs" aria-label="Vistas del negocio">
-                    <button t-foreach="state.options.tabs" t-as="tab" t-key="tab.key" t-att-class="state.tab === tab.key ? 'active' : ''"
-                        t-att-aria-current="state.tab === tab.key ? 'page' : undefined" t-on-click="() => this.load(tab.key)"><t t-esc="tab.label"/></button>
+                <nav t-if="state.options" class="hmx_navigation" aria-label="Vistas del negocio">
+                    <div class="hmx_tabs"><button t-foreach="primaryTabs" t-as="tab" t-key="tab.key" t-att-class="state.tab === tab.key ? 'active' : ''" t-att-aria-label="tab.label" t-att-aria-current="state.tab === tab.key ? 'page' : undefined" t-on-click="() => this.load(tab.key)"><t t-esc="tab.shortLabel"/></button></div>
+                    <div class="hmx_nav_groups"><details t-foreach="navigationGroups" t-as="group" t-key="group.key" t-attf-class="hmx_dropdown hmx_nav_group #{group.active ? 'active' : ''}" t-on-toggle="onMenuToggle">
+                        <summary><t t-esc="group.label"/><span t-if="group.active" class="hmx_current_view"> · <t t-esc="group.active.label"/></span></summary>
+                        <div class="hmx_dropdown_body hmx_nav_menu"><button t-foreach="group.tabs" t-as="tab" t-key="tab.key" t-att-class="state.tab === tab.key ? 'active' : ''" t-att-aria-current="state.tab === tab.key ? 'page' : undefined" t-on-click="() => this.load(tab.key)"><t t-esc="tab.label"/><span t-if="state.tab === tab.key" aria-hidden="true">✓</span></button></div>
+                    </details></div>
+                    <label class="hmx_mobile_nav">Vista<select aria-label="Vista del negocio" t-att-value="state.tab" t-on-change="ev => this.load(ev.target.value)">
+                        <optgroup label="Negocio"><option t-foreach="primaryTabs" t-as="tab" t-key="tab.key" t-att-value="tab.key" t-att-selected="state.tab === tab.key"><t t-esc="tab.label"/></option></optgroup>
+                        <optgroup t-foreach="navigationGroups" t-as="group" t-key="group.key" t-att-label="group.label"><option t-foreach="group.tabs" t-as="tab" t-key="tab.key" t-att-value="tab.key" t-att-selected="state.tab === tab.key"><t t-esc="tab.label"/></option></optgroup>
+                    </select></label>
                 </nav>
             </header>
 
@@ -65,7 +88,7 @@
                 <div t-if="state.loading" class="hmx_loading" role="status">
                     <i class="fa fa-circle-o-notch fa-spin" aria-hidden="true"/> Consultando la operación…
                 </div>
-                <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Selecciona Actualizar para aplicar las fechas.</div>
+                <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Pulsa Aplicar cambios para consultar la selección.</div>
                 <t t-if="state.data and state.data.executive">
                     <p t-if="state.data.mixed" class="hmx_notice">Mixto: cada divisa conserva sus importes, comparación y gráficas. No se suman ni convierten monedas. Un cliente puede aparecer en varias divisas; sus conteos no se suman entre bloques.</p>
                     <section t-if="state.data.mixed" class="hmx_panel hmx_currency_overview"><h2>Resumen por divisa</h2>
