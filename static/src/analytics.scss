@@ -84,7 +84,8 @@
         h2, h3 { margin: 0 0 4px; } p, > span { color: var(--hmx-muted); font-size: 13px; margin: 0; }
     }
     .hmx_section_title { margin: 30px 0 16px; }
-    .hmx_metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; margin-bottom: 22px; }
+    // Keep CSS min() for the browser; LibSass cannot compare px with %.
+    .hmx_metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(#{unquote('min(260px, 100%)')}, 1fr)); gap: 16px; margin-bottom: 22px; }
     .hmx_metric { background: white; border: 1px solid var(--hmx-border); border-top: 4px solid var(--hmx-blue); border-radius: 10px; padding: 20px;
         text-align: left; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; color: var(--hmx-ink);
         h3 { margin: 12px 0 3px; } p { font-size: 13px; } strong { font-size: 28px; margin: 10px 0; overflow-wrap: anywhere; }

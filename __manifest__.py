@@ -1,6 +1,6 @@
 {
     'name': 'Hexágonos Analytics',
-    'version': '18.0.2.0.0',
+    'version': '18.0.2.0.1',
     'summary': 'Dirección comercial, recurrencia de clientes y producción por almacén',
     'category': 'Manufacturing',
     'author': 'Alphaqueb Consulting SAS',
