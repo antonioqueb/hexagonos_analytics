@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_dof_month_viewer,DOF monthly publications read,model_hexagonos_analytics_dof_month,hexagonos_analytics.group_analytics_viewer,1,0,0,0

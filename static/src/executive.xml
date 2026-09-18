@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates xml:space="preserve">
     <t t-name="hexagonos_analytics.Executive">
-        <div class="hmx_section_heading"><div><h2><t t-esc="state.options.tabs.find(t => t.key === state.tab).label"/><t t-if="state.tab !== 'produccion'"> · <t t-esc="viewData.currency"/></t></h2>
+        <div class="hmx_section_heading"><div><h2><t t-esc="state.options.tabs.find(t => t.key === state.tab).label"/><t t-if="state.tab !== 'produccion'"> · <t t-esc="viewData.currency"/><t t-if="viewData.fx and viewData.fx.applied"> consolidado</t></t></h2>
             <p><t t-esc="viewData.period"/> · comparación: <t t-esc="viewData.comparison_period"/></p></div>
             <span t-if="state.tab !== 'produccion'"><t t-if="viewData.mixed">Mixto · importes en su divisa original, sin conversión</t><t t-else="">Importes sin impuestos, salvo cobros · <t t-esc="viewData.currency"/></t></span>
         </div>

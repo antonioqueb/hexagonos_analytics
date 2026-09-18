@@ -22,6 +22,8 @@ class SaleOrderLine(models.Model):
 class AccountMoveLine(models.Model):
     _inherit = 'account.move.line'
 
+    hmx_invoice_date = fields.Date(related='move_id.invoice_date', store=True, index=True)
+
     hmx_warehouse_id = fields.Many2one(
         'stock.warehouse', compute='_compute_hmx_warehouse', store=True, index=True,
         help='Almacén comercial único de las líneas de venta enlazadas. Sin enlace o con varios: Sin asignar.')

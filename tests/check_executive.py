@@ -66,15 +66,18 @@ class Source:
             for field in groupby:
                 if ':' in field:
                     fieldname, granularity = field.split(':')
-                    day = legacy.Datetime.context_timestamp(None, datetime.fromisoformat(row[fieldname])).date()
+                    date_only = len(row[fieldname]) == 10
+                    day = date.fromisoformat(row[fieldname]) if date_only else legacy.Datetime.context_timestamp(None, datetime.fromisoformat(row[fieldname])).date()
                     low = day.replace(day=1) if granularity == 'month' else day
                     high = math.shift_month(low, 1) if granularity == 'month' else low + timedelta(days=1)
-                    a, b = (legacy.Datetime.to_string(legacy.analytics.utc_midnight(d)) for d in (low, high))
+                    a, b = (str(d) if date_only else legacy.Datetime.to_string(legacy.analytics.utc_midnight(d)) for d in (low, high))
                     value = low.isoformat()
                     ranges[field] = {'from': a, 'to': b}
                     extra += [(fieldname, '>=', a), (fieldname, '<', b)]
                 else:
                     value = row.get(field, False)
+                    if field == 'currency_id' and isinstance(value, int) and value:
+                        value = (value, {1: 'MXN', 2: 'USD', 3: 'EUR'}.get(value, str(value)))
                     extra += [(field, '=', value[0] if isinstance(value, tuple) else value)]
                 values.append(value)
             key = tuple(values)

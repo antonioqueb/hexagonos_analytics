@@ -34,7 +34,7 @@
                         <label class="hmx_field_control hmx_comparison"><span class="hmx_field_label">Comparar con</span><select name="comparison" t-att-value="state.filters.comparison" t-on-change="ev => this.changeFilter('comparison', ev)">
                             <option value="previous_period" t-att-selected="state.filters.comparison === 'previous_period'">Período anterior</option><option value="previous_month" t-att-selected="state.filters.comparison === 'previous_month'">Mes anterior</option><option value="previous_year" t-att-selected="state.filters.comparison === 'previous_year'">Año anterior</option>
                         </select></label>
-                        <label class="hmx_field_control hmx_currency"><span class="hmx_field_label">Divisa</span><select name="currency_id" t-att-value="state.filters.currency_id" t-on-change="changeCurrency" title="Ventas y compras. Mixto mantiene las divisas separadas.">
+                        <label class="hmx_field_control hmx_currency"><span class="hmx_field_label">Divisa</span><select name="currency_id" t-att-value="state.filters.currency_id" t-on-change="changeCurrency" title="Mixto suma MXN y USD en pesos al promedio mensual del DOF. Una divisa conserva los importes originales.">
                             <option value="0" t-att-selected="state.filters.currency_id === 0">Mixto</option><option t-foreach="state.options.currencies" t-as="currency" t-key="currency.id" t-att-value="currency.id" t-att-selected="state.filters.currency_id === currency.id"><t t-esc="currency.name"/></option>
                         </select></label>
                         <details class="hmx_dropdown hmx_warehouses" t-on-toggle="onMenuToggle">
@@ -89,6 +89,22 @@
                     <i class="fa fa-circle-o-notch fa-spin" aria-hidden="true"/> Consultando la operación…
                 </div>
                 <div t-if="!state.loading and !state.data and !state.error" class="hmx_empty">Pulsa Aplicar cambios para consultar la selección.</div>
+                <section t-if="state.data and state.data.fx" class="hmx_fx" aria-label="Conversión con promedio mensual DOF">
+                    <t t-if="state.data.fx.applied">
+                        <div class="hmx_section_heading"><div><strong>Consolidado en MXN · promedio mensual DOF</strong><p>Pesos + dólares convertidos al promedio de su mes. Los documentos conservan su moneda original.</p></div>
+                            <span class="hmx_scope">MXN + USD</span></div>
+                        <div class="hmx_fx_rates"><span t-foreach="state.data.fx.rates.filter(rate => rate.selected)" t-as="rate" t-key="rate.month"><b t-esc="rate.month"/> · <t t-if="rate.available">1 USD = <b t-esc="fxNumber(rate.average)"/> MXN <t t-if="rate.provisional">· provisional</t></t><t t-else="">promedio no disponible</t></span></div>
+                        <p t-if="state.data.fx.excluded and state.data.fx.excluded.length" class="hmx_notice">Divisas fuera del consolidado: <t t-esc="state.data.fx.excluded.join(', ')"/>. Puedes consultarlas en el selector de divisa.</p>
+                        <details class="hmx_fx_detail"><summary>Ver promedios, publicaciones y fórmula</summary><p t-esc="state.data.fx.formula"/><p t-esc="state.data.fx.method"/>
+                            <div class="hmx_table_scroll"><table class="hmx_table"><thead><tr><th>Mes</th><th>MXN por USD</th><th>Publicaciones</th><th>Última publicación</th><th>Estado</th><th>Consultado (UTC)</th><th>Fuente y valores</th></tr></thead><tbody>
+                                <tr t-foreach="state.data.fx.rates" t-as="rate" t-key="rate.month"><th scope="row" t-esc="rate.month"/><td t-esc="rate.available ? fxNumber(rate.average) : 'No disponible'"/><td t-esc="rate.count"/><td t-esc="rate.last_publication || '—'"/><td t-esc="rate.provisional ? 'Provisional' : 'Mes cerrado'"/><td t-esc="rate.fetched_at"/>
+                                    <td><a t-att-href="rate.public_url" target="_blank" rel="noopener noreferrer">Ver DOF ↗</a><details t-if="rate.publications.length"><summary>Valores diarios</summary><ul class="hmx_fx_publications"><li t-foreach="rate.publications" t-as="publication" t-key="publication.date"><t t-esc="publication.date"/> · <t t-esc="publication.value"/></li></ul></details><span t-else="" t-esc="rate.error"/></td>
+                                </tr>
+                            </tbody></table></div>
+                        </details>
+                    </t>
+                    <p t-else="" role="status"><strong>No se pudo consolidar con el DOF.</strong> <t t-esc="state.data.fx.error"/> Los importes se muestran por divisa, sin sumarlos.</p>
+                </section>
                 <t t-if="state.data and state.data.executive">
                     <t t-set="viewData" t-value="state.data"/><t t-call="hexagonos_analytics.Executive"/>
                 </t>

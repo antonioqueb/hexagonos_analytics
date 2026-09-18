@@ -57,6 +57,26 @@ class TestExecutiveAnalytics(TransactionCase):
         series = service._series(parsed)
         self.assertAlmostEqual(sum(r['value'] for r in series[0]['rows']), 540)
 
+    def test_dof_native_month_currency_grouping(self):
+        mxn = self.env.ref('base.MXN')
+        usd = self.env.ref('base.USD')
+        mxn.active = usd.active = True
+        for order, currency in zip(self.orders, (mxn, usd)):
+            pricelist = self.env['product.pricelist'].create({'name': 'QA DOF ' + currency.name, 'currency_id': currency.id})
+            order.pricelist_id = pricelist
+        self.env.flush_all()
+        month = self.today.strftime('%Y-%m')
+        rates = {month: dict(month=month, available=True, average='20', count=1,
+            selected=True, provisional=True, publications=[dict(date=str(self.today), value='20')],
+            through=str(self.today), fetched_at='2026-09-16 18:00:00', first_publication=str(self.today),
+            last_publication=str(self.today), public_url='https://www.dof.gob.mx/', error='')}
+        with patch.object(type(self.env['hexagonos.analytics.dof.month']), '_monthly_rates', return_value=rates):
+            data = self.service.get_dashboard('comercial', dict(self.filters, currency_id=0))
+        self.assertTrue(data['fx']['applied'])
+        self.assertAlmostEqual(data['cards'][0]['current'], 180 + 360 * 20)
+        self.assertAlmostEqual(sum(row['current'] for row in data['dimensions']['warehouse']), 7380)
+        self.assertAlmostEqual(sum(row['value'] for row in data['series'][0]['rows']), 7380)
+
     def test_multi_warehouse_unassigned_and_currency_scope(self):
         all_data = self.service.get_dashboard('comercial', self.filters)
         self.assertAlmostEqual(all_data['cards'][0]['current'], 540)

@@ -1,6 +1,6 @@
 {
     'name': 'Hexágonos Analytics',
-    'version': '18.0.2.0.5',
+    'version': '18.0.2.0.6',
     'summary': 'Dirección comercial, recurrencia de clientes y producción por almacén',
     'category': 'Manufacturing',
     'author': 'Alphaqueb Consulting SAS',
@@ -10,7 +10,7 @@
         'quality_management', 'custom_purchase_extension',
         'control_costos_hexagonos', 'entregas_evidencias', 'empleados_hmx',
     ],
-    'data': ['security/analytics_security.xml', 'views/analytics_views.xml'],
+    'data': ['security/analytics_security.xml', 'security/ir.model.access.csv', 'views/analytics_views.xml'],
     'assets': {
         'web.assets_backend': [
             'hexagonos_analytics/static/src/mixed.js',

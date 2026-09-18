@@ -15,6 +15,7 @@ class Dialog extends Component{static props=['*'];static template=owl.xml\`<div>
 const services={orm:{call:async(model,method,args)=>{
  if(method==='get_options') return structuredClone(fixtures.options);
  if(method==='get_filter_options') return fixtures.options[args[0]+'s'];
+ if(window.useDof && args[1]?.currency_id === 0 && fixtures.consolidated[args[0]]) return structuredClone(fixtures.consolidated[args[0]]);
  return structuredClone(args[1]?.currency_id === 0 && fixtures.mixed[args[0]] ? fixtures.mixed[args[0]] : fixtures.dashboards[args[0]]);
 }},action:{doAction:async action=>window.lastAction=action},dialog:{add:()=>{}},notification:{add:()=>{}}};
 ${source}
@@ -131,6 +132,20 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
  assert.ok(mixedDrill.action.domain.some(t=>t[0]==='currency_id'&&t[2]===2));
  await trend.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'mixed-charts.png')});
  await page.locator('.hmx_heatmap').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'mixed-customers.png')});
+ await page.evaluate(async()=>{window.useDof=true;await window.component.load('resumen');});
+ await page.waitForSelector('.hmx_fx');
+ await page.waitForFunction(()=>Object.keys(Chart.instances).length===8);
+ assert.equal(await page.locator('.hmx_exec_metrics .hmx_value').first().textContent(),'16,350 MXN');
+ assert.equal(await page.locator('.hmx_mixed_chart').count(),0);
+ assert.equal(await page.locator('.hmx_heatmap').count(),1);
+ assert.deepEqual(await contrast(),[]);
+ await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);await page.screenshot({path:path.join(qa,'dof-consolidated.png')});
+ await page.locator('.hmx_fx_detail > summary').click();
+ assert.equal(await page.locator('.hmx_fx_detail tbody tr').count(),12);
+ assert.ok((await page.locator('.hmx_fx a').first().getAttribute('href')).startsWith('https://www.dof.gob.mx/indicadores_detalle.php?'));
+ assert.deepEqual(await contrast(),[]);
+ await page.locator('.hmx_fx').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(qa,'dof-rates.png')});
+ await page.locator('.hmx_fx_detail > summary').click();
  for(const width of [390,768]){
   await page.setViewportSize({width,height:900});
   await navigate('Resumen ejecutivo');await page.waitForSelector('.hmx_exec_metrics');
@@ -141,7 +156,7 @@ fs.writeFileSync(path.join(qa,'preview.html'),html);
   assert.deepEqual(await contrast(),[]);
   await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(qa,`screen-${width}.png`)});
-  await page.locator('.hmx_mixed_chart').first().scrollIntoViewIfNeeded();
+  await page.locator('.hmx_panels > .hmx_panel').first().scrollIntoViewIfNeeded();
   assert.ok(await page.locator('.hmx_analytics').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
   await page.screenshot({path:path.join(qa,`mixed-charts-${width}.png`)});
   await page.locator('.hmx_analytics').evaluate(el=>el.scrollTop=0);

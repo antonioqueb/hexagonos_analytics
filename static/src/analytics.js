@@ -266,6 +266,7 @@ export class HexagonosAnalytics extends Component {
         if (value === null || value === undefined) return '—';
         return `${new Intl.NumberFormat('es-MX', { maximumFractionDigits: data.currency_digits ?? 2 }).format(value)} ${data.currency}`;
     }
+    fxNumber(value) { return new Intl.NumberFormat('es-MX', { minimumFractionDigits: 6, maximumFractionDigits: 6 }).format(Number(value)); }
     signed(value, digits = this.state.data?.currency_digits ?? 2) {
         return `${value > 0 ? '+' : ''}${new Intl.NumberFormat('es-MX', { maximumFractionDigits: digits }).format(value)}`;
     }

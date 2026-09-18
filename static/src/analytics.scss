@@ -202,6 +202,15 @@
         > .hmx_link { justify-self: start; }
     }
     .hmx_inline_currencies { display: flex; flex-wrap: wrap; gap: 4px 28px; }
+    .hmx_fx { background: white; border: 1px solid var(--hmx-border); border-left: 4px solid var(--hmx-blue); border-radius: 8px; padding: 16px 20px; margin-bottom: 22px; color: var(--hmx-ink); font-size: 13px;
+        .hmx_section_heading { margin-bottom: 10px; }
+        a { color: #153DA5; text-decoration: underline; }
+        a:hover { color: #0F2385; background: var(--hmx-hover); }
+        a:focus-visible { outline: 3px solid var(--hmx-blue); outline-offset: 3px; }
+    }
+    .hmx_fx_rates { display: flex; flex-wrap: wrap; gap: 6px 16px; color: #193B8A; }
+    .hmx_fx_detail { margin-top: 12px; summary { color: #153DA5; } }
+    .hmx_fx_publications { padding-left: 16px; white-space: nowrap; }
     .hmx_insight_value { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
     .hmx_mixed_chart { grid-column: 1 / -1; }
     .hmx_chart_facets { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }

@@ -16,6 +16,8 @@ w.services = {orm:{call:async(model,method,args) => {
  if(method === 'get_filter_options') return fixtures.options[args[0]+'s'];
  if(mode === 'deferred') return new Promise(resolve=>deferred.push({args,resolve}));
  if(mode === 'denied') {const e=new Error('Revocado');e.data={name:'odoo.exceptions.AccessError'};throw e;}
+ if(mode === 'dof' && args[1]?.currency_id === 0 && fixtures.consolidated[args[0]]) return structuredClone(fixtures.consolidated[args[0]]);
+ if(mode === 'dofError' && args[1]?.currency_id === 0) return {...structuredClone(fixtures.mixed[args[0]]),fx:{applied:false,error:'No hay promedio DOF verificable para 2026-09.',rates:[]}};
  return structuredClone(args[1]?.currency_id === 0 && fixtures.mixed[args[0]] ? fixtures.mixed[args[0]] : fixtures.dashboards[args[0]]);
 }}, action:{doAction:async a=>actions.push(a)}, dialog:{add:()=>{}}, notification:{add:()=>{}}};
 w.Chart=class {static version='4.4.1';constructor(canvas, config){this.config=config;}destroy(){}};
@@ -67,6 +69,24 @@ const tick=()=>new Promise(r=>setTimeout(r,50));
   assert.ok(component.charts.every(chart=>chart.facets.length===2));
  }
  console.log('PASS unified mixed cards/charts/customers in all commercial views; unique customer counts; USD detail keeps its currency');
+ mode='dof';await component.load('resumen');await tick();
+ assert.ok(w.document.querySelector('.hmx_fx').textContent.includes('20.000000'));
+ assert.equal(w.document.querySelectorAll('.hmx_exec_metrics article').length,3);
+ assert.equal(w.document.querySelectorAll('.hmx_value')[0].textContent,'16,350 MXN');
+ assert.equal(w.document.querySelectorAll('.hmx_mixed_chart').length,0);
+ assert.equal(w.document.querySelectorAll('canvas').length,8);
+ assert.equal(w.document.querySelectorAll('.hmx_heatmap').length,1);
+ w.document.querySelector('.hmx_value').click();await tick();
+ assert.ok(actions.at(-1).domain.some(t=>t[0]==='currency_id'&&t[1]==='in'&&t[2].includes(1)&&t[2].includes(2)));
+ for(const tab of ['comercial','clientes','productos']){
+  await component.load(tab);await tick();assert.ok(w.document.body.textContent.includes('MXN consolidado'));
+  assert.ok(!w.document.body.textContent.includes('NaN'));
+ }
+ mode='dofError';await component.load('resumen');await tick();
+ assert.ok(w.document.querySelector('.hmx_fx').textContent.includes('No se pudo consolidar'));
+ assert.ok(w.document.body.textContent.includes('800 USD'));
+ mode='normal';
+ console.log('PASS DOF consolidated cards/charts and original-document drill; monthly audit and explicit fallback on missing rate');
  component.changeCurrency({target:{value:'1'}});await tick();await tick();
  await component.load('clientes');await tick();
  assert.ok(w.document.body.textContent.includes('Reactivado'));

@@ -321,7 +321,7 @@ class ExecutiveAnalytics(models.AbstractModel):
         # Scope selects the customer population; classification uses the whole visible company history.
         scoped = self._sale_domain(f) + [('hmx_date', '<', fields.Datetime.to_string(utc_midnight(f['date_to'] + timedelta(days=1)))),
                                          ('product_uom_qty', '>', 0), ('price_subtotal', '>', 0)]
-        population = self._groups('sale.order.line', scoped, ['hmx_customer_id'], ['price_subtotal:sum'])
+        population = self._groups('sale.order.line', scoped, ['hmx_customer_id'], [])
         ids = [g['hmx_customer_id'][0] for g in population if g['hmx_customer_id']]
         history = defaultdict(list)
         history_domain = [('company_id', '=', f['company_id']), ('state', '=', 'sale'),
@@ -581,10 +581,11 @@ class ExecutiveAnalytics(models.AbstractModel):
 
     def _executive_dashboard(self, tab, f, include_production=True):
         service = self
-        currency = service.env['res.currency'].browse(f['currency_id']).name
+        display_currency_id = f.get('display_currency_id') or f['currency_id']
+        currency = service.env['res.currency'].browse(display_currency_id).name
         data = dict(executive=True, cards=[], dimensions={}, series=[], customers=None, volume=[], production=None,
-                    company=service.env.company.name, today=str(f['today']), currency=currency, currency_id=f['currency_id'],
-                    currency_digits=service.env['res.currency'].browse(f['currency_id']).decimal_places,
+                    company=service.env.company.name, today=str(f['today']), currency=currency, currency_id=display_currency_id,
+                    currency_digits=service.env['res.currency'].browse(display_currency_id).decimal_places,
                     updated_at=fields.Datetime.context_timestamp(service, fields.Datetime.now()).strftime('%d/%m/%Y %H:%M'),
                     period='%s — %s' % (f['date_from'], f['date_to']),
                     comparison_period='%s — %s' % (f['previous_from'], f['previous_to']),
